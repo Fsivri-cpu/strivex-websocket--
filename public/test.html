@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relevance AI WebSocket Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 3fr 1fr;
+            gap: 20px;
+        }
+        .chat-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 600px;
+        }
+        #messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            border: 1px solid #eee;
+        }
+        .message {
+            margin-bottom: 12px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            max-width: 80%;
+            word-break: break-word;
+        }
+        .user-message {
+            background-color: #e1f5fe;
+            color: #0277bd;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+        .server-message {
+            background-color: #f0f4c3;
+            color: #33691e;
+        }
+        .status {
+            color: #888;
+            font-style: italic;
+            margin-bottom: 8px;
+            text-align: center;
+            font-size: 0.9em;
+        }
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            border-left: 3px solid #c62828;
+        }
+        .typing {
+            color: #888;
+            font-style: italic;
+            padding: 5px 10px;
+        }
+        #form {
+            display: flex;
+            margin-top: 10px;
+        }
+        #input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-right: 10px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #388e3c;
+        }
+        button:disabled {
+            background-color: #9e9e9e;
+            cursor: not-allowed;
+        }
+        .dashboard {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            height: fit-content;
+        }
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-dot.connected {
+            background-color: #4caf50;
+        }
+        .status-dot.disconnected {
+            background-color: #f44336;
+        }
+        .status-dot.connecting {
+            background-color: #ff9800;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+        .api-test {
+            margin-top: 20px;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+        }
+        h1, h2, h3 {
+            color: #2e7d32;
+        }
+        .connection-details {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-size: 0.9em;
+            font-family: monospace;
+        }
+        .event-log {
+            max-height: 200px;
+            overflow-y: auto;
+            background-color: #263238;
+            color: #fff;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .timestamp {
+            color: #90caf9;
+            margin-right: 5px;
+        }
+        .event-type {
+            color: #ffcc80;
+            margin-right: 5px;
+        }
+        .clear-log {
+            background-color: #455a64;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            margin-top: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Relevance AI WebSocket Test</h1>
+    <p>Bu sayfa WebSocket bağlantısını test etmek ve Relevance AI API ile haberleşmeyi görebilmek için tasarlanmıştır.</p>
+    
+    <div class="container">
+        <div class="chat-container">
+            <h2>Chat Testi</h2>
+            <div id="messages"></div>
+            <div id="typing" class="typing" style="display: none;">Bot yanıt yazıyor...</div>
+            <form id="form">
+                <input id="input" autocomplete="off" placeholder="Bir mesaj yazın..." />
+                <button type="submit" id="send-button">Gönder</button>
+            </form>
+        </div>
+        
+        <div class="dashboard">
+            <h2>Bağlantı Durumu</h2>
+            <div class="status-indicator">
+                <div id="status-dot" class="status-dot connecting"></div>
+                <div id="status-text">Bağlanılıyor...</div>
+            </div>
+            
+            <div class="connection-details">
+                <div><strong>Socket ID:</strong> <span id="socket-id">-</span></div>
+                <div><strong>Agent ID:</strong> <span id="agent-id">-</span></div>
+                <div><strong>Transport:</strong> <span id="transport-type">-</span></div>
+                <div><strong>Ping:</strong> <span id="ping">-</span> ms</div>
+            </div>
+            
+            <h3>Olay Günlüğü</h3>
+            <div id="event-log" class="event-log"></div>
+            <button id="clear-log" class="clear-log">Günlüğü Temizle</button>
+            
+            <div class="api-test">
+                <h3>API Testi</h3>
+                <p>Bu bölüm, WebSocket bağlantısı hatası alırsanız doğrudan API'yi test etmenize olanak tanır.</p>
+                <button id="test-api" class="test-api">API'yi Test Et</button>
+                <div id="api-result" style="margin-top: 10px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // DOM Elements
+        const form = document.getElementById('form');
+        const input = document.getElementById('input');
+        const sendButton = document.getElementById('send-button');
+        const messages = document.getElementById('messages');
+        const typingIndicator = document.getElementById('typing');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const socketId = document.getElementById('socket-id');
+        const agentId = document.getElementById('agent-id');
+        const transportType = document.getElementById('transport-type');
+        const pingElement = document.getElementById('ping');
+        const eventLog = document.getElementById('event-log');
+        const clearLogButton = document.getElementById('clear-log');
+        const testApiButton = document.getElementById('test-api');
+        const apiResult = document.getElementById('api-result');
+        
+        // Default Agent ID - .env dosyasında ayarlanan ID'yi kullanacaktır
+        const defaultAgentId = '5454f36a-e47c-4c41-977e-320d2611b638';
+        
+        // Helper Functions
+        function logEvent(type, message) {
+            const now = new Date();
+            const timestamp = now.toISOString().split('T')[1].slice(0, 8);
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `<span class="timestamp">[${timestamp}]</span> <span class="event-type">${type}</span> ${message}`;
+            eventLog.appendChild(logEntry);
+            eventLog.scrollTop = eventLog.scrollHeight;
+        }
+        
+        function addMessage(text, type = 'status') {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message');
+            
+            if (type === 'user-message') {
+                messageDiv.classList.add('user-message');
+                messageDiv.textContent = text;
+            } else if (type === 'server-message') {
+                messageDiv.classList.add('server-message');
+                messageDiv.textContent = text;
+            } else if (type === 'error') {
+                messageDiv.classList.add('error');
+                messageDiv.textContent = text;
+            } else {
+                // Status message
+                messageDiv.classList.add('status');
+                messageDiv.textContent = text;
+            }
+            
+            messages.appendChild(messageDiv);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        function updateConnectionStatus(status) {
+            statusDot.className = 'status-dot';
+            statusDot.classList.add(status);
+            
+            switch (status) {
+                case 'connected':
+                    statusText.textContent = 'Bağlandı';
+                    break;
+                case 'disconnected':
+                    statusText.textContent = 'Bağlantı Kesildi';
+                    break;
+                case 'connecting':
+                    statusText.textContent = 'Bağlanılıyor...';
+                    break;
+                default:
+                    statusText.textContent = status;
+            }
+        }
+        
+        function showTyping(show) {
+            typingIndicator.style.display = show ? 'block' : 'none';
+        }
+        
+        function disableInterface(disable) {
+            input.disabled = disable;
+            sendButton.disabled = disable;
+        }
+        
+        // Socket.IO Setup
+        // Improved connection options for better reliability
+        const socket = io({
+            transports: ['websocket', 'polling'],  // Try WebSocket first, fallback to polling
+            reconnectionAttempts: 5,               // Maximum reconnection attempts
+            reconnectionDelay: 1000,               // Starting delay between reconnection attempts
+            timeout: 10000,                        // Connection timeout
+            query: { agentId: defaultAgentId }     // Pass agentId in query parameters
+        });
+        
+        // Connection Events
+        socket.on('connect', () => {
+            updateConnectionStatus('connected');
+            socketId.textContent = socket.id;
+            agentId.textContent = defaultAgentId;
+            transportType.textContent = socket.io.engine.transport.name;
+            
+            // Enable the interface
+            disableInterface(false);
+            
+            // Add welcome message
+            addMessage('WebSocket sunucusuna bağlandı. Mesajlaşmaya başlayabilirsiniz.', 'status');
+            logEvent('connect', 'Socket.IO connected successfully');
+            
+            // Start ping measurement
+            startPingMeasurement();
+        });
+        
+        socket.on('disconnect', (reason) => {
+            updateConnectionStatus('disconnected');
+            transportType.textContent = '-';
+            pingElement.textContent = '-';
+            
+            addMessage(`Bağlantı kesildi: ${reason}`, 'error');
+            logEvent('disconnect', `Reason: ${reason}`);
+            
+            // Disable the interface when disconnected
+            disableInterface(true);
+        });
+        
+        socket.on('connect_error', (error) => {
+            updateConnectionStatus('disconnected');
+            addMessage(`Bağlantı hatası: ${error.message}`, 'error');
+            logEvent('error', `Connection error: ${error.message}`);
+        });
+        
+        socket.on('reconnect_attempt', (attemptNumber) => {
+            updateConnectionStatus('connecting');
+            logEvent('reconnect', `Attempt #${attemptNumber}`);
+        });
+        
+        socket.on('reconnect', (attemptNumber) => {
+            updateConnectionStatus('connected');
+            addMessage(`Yeniden bağlandı, ${attemptNumber} denemede.`, 'status');
+            logEvent('reconnect', 'Successfully reconnected');
+        });
+        
+        socket.on('reconnect_error', (error) => {
+            logEvent('error', `Reconnection error: ${error.message}`);
+        });
+        
+        socket.on('reconnect_failed', () => {
+            addMessage('Yeniden bağlanma başarısız oldu, lütfen sayfayı yenileyin.', 'error');
+            logEvent('error', 'Reconnection failed after all attempts');
+        });
+        
+        // Message and Response Events
+        socket.on('connection_status', (data) => {
+            logEvent('status', data.message);
+            addMessage(`Sunucu: ${data.message}`, 'server-message');
+        });
+        
+        socket.on('processing', (data) => {
+            showTyping(true);
+            logEvent('processing', `Message ${data.messageId} is being processed`);
+        });
+        
+        socket.on('reply', (data) => {
+            showTyping(false);
+            addMessage(`Bot: ${data.response}`, 'server-message');
+            logEvent('reply', `Received response for message ID: ${data.messageId}`);
+        });
+        
+        socket.on('error', (data) => {
+            showTyping(false);
+            addMessage(`Hata: ${data.message}`, 'error');
+            logEvent('error', `Server error: ${data.message}`);
+        });
+        
+        // Form Submission
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            sendMessage();
+        });
+        
+        // Send message function
+        function sendMessage() {
+            const message = input.value.trim();
+            if (!message) return;
+            
+            // Generate a unique message ID
+            const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            
+            // Add the message to the UI
+            addMessage(`Siz: ${message}`, 'user-message');
+            
+            // Show typing indicator
+            showTyping(true);
+            
+            // Send message via Socket.IO
+            socket.emit('send_message', {
+                messageId: messageId,
+                message: message,
+                agentId: defaultAgentId,
+                timestamp: new Date().toISOString()
+            });
+            
+            logEvent('send', `Sent message: "${message.substring(0, 30)}${message.length > 30 ? '...' : ''}"`);
+            
+            // Clear input
+            input.value = '';
+            input.focus();
+        }
+        
+        // Clear the event log
+        clearLogButton.addEventListener('click', () => {
+            eventLog.innerHTML = '';
+            logEvent('info', 'Event log cleared');
+        });
+        
+        // Test the API directly (useful when WebSocket is not working)
+        testApiButton.addEventListener('click', async () => {
+            try {
+                apiResult.innerHTML = '<div class="status">Testing API connection...</div>';
+                logEvent('api-test', 'Testing direct API connection');
+                
+                // Create a basic test message with webhook details
+                const testMessage = 'Merhaba, bu webhook destekli bir API testidir';
+                
+                // Webhook test bilgisini ekle
+                logEvent('api-test', 'Testing API with webhook callback');
+                
+                // Yenilenmiş API endpoint'ine webhook bilgisiyle istek gönder
+                const response = await fetch('/api/test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        // API key burada gönderilmiyor, sunucu tarafında yönetiliyor
+                    },
+                    body: JSON.stringify({
+                        message: testMessage,
+                        agentId: defaultAgentId
+                    })
+                });
+                
+                // Önce ham yanıtı al
+                const responseText = await response.text();
+                console.log('API Test Raw Response:', responseText);
+                
+                // Yanıt OK değilse, hata metniyle birlikte hata fırlat
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status} - Response: ${responseText}`);
+                }
+                
+                // JSON olarak çözümlemeyi dene
+                let result;
+                try {
+                    result = JSON.parse(responseText);
+                } catch (e) {
+                    throw new Error(`Invalid JSON response: ${responseText}`);
+                }
+                
+                apiResult.innerHTML = `
+                    <div class="status">API test successful!</div>
+                    <pre style="background:#f5f5f5;padding:10px;border-radius:4px;margin-top:10px;overflow:auto;">${JSON.stringify(result, null, 2)}</pre>
+                `;
+                
+                logEvent('api-test', 'Direct API test successful - ' + (result.conversationId ? `Conversation ID: ${result.conversationId}` : 'No conversation ID'));
+                
+            } catch (error) {
+                apiResult.innerHTML = `<div class="error">API test failed: ${error.message}</div>`;
+                logEvent('api-test', `Direct API test failed: ${error.message}`);
+            }
+        });
+
+        // Log debug info
+        console.log('Socket.IO test page loaded');
+        console.log('Using Socket.IO version:', io.version);
+    </script>
+</body>
+</html>

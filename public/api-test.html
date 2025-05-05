@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTTP API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #messages {
+            height: 300px;
+            border: 1px solid #ccc;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+        .user-message {
+            color: blue;
+            margin-bottom: 8px;
+        }
+        .server-message {
+            color: green;
+            margin-bottom: 8px;
+        }
+        .status {
+            color: #888;
+            font-style: italic;
+            margin-bottom: 8px;
+        }
+        .error {
+            color: red;
+            margin-bottom: 8px;
+        }
+        #form {
+            display: flex;
+        }
+        #input {
+            flex-grow: 1;
+            padding: 8px;
+            margin-right: 10px;
+        }
+        pre {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <h1>HTTP API Test Page</h1>
+    <div id="status">Status: Ready</div>
+    <div id="messages"></div>
+    <form id="form">
+        <input id="input" autocomplete="off" placeholder="Type a message..." />
+        <button type="submit">Send</button>
+    </form>
+    
+    <h3>API Response:</h3>
+    <pre id="response">Waiting for API call...</pre>
+
+    <script>
+        // DOM elements
+        const form = document.getElementById('form');
+        const input = document.getElementById('input');
+        const messages = document.getElementById('messages');
+        const statusElement = document.getElementById('status');
+        const responseElement = document.getElementById('response');
+
+        // Add message to UI
+        function addMessage(text, type = 'status') {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add(type);
+            messageElement.textContent = text;
+            messages.appendChild(messageElement);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        // Update connection status
+        function updateStatus(text) {
+            statusElement.textContent = 'Status: ' + text;
+        }
+
+        // Handle form submission
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const message = input.value;
+            if (!message) return;
+            
+            // Clear input field
+            input.value = '';
+            
+            // Display user message
+            addMessage('You: ' + message, 'user-message');
+            
+            try {
+                updateStatus('Sending message...');
+                
+                // Send message to API using fetch
+                const response = await fetch('/api/send-message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        agentId: '5454f36a-e47c-4c41-977e-320d2611b638',
+                        messageId: 'test-' + Date.now()
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Display API response
+                addMessage('AI: ' + data.message, 'server-message');
+                responseElement.textContent = JSON.stringify(data, null, 2);
+                updateStatus('Message sent successfully');
+                
+            } catch (error) {
+                console.error('Error sending message:', error);
+                addMessage('Error: ' + error.message, 'error');
+                responseElement.textContent = 'Error: ' + error.message;
+                updateStatus('Failed to send message');
+            }
+        });
+
+        // Initial status
+        addMessage('Ready to test API. Type a message and press Send.');
+    </script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+# Node dependencies
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Environment variables
+.env
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-*
+
+# macOS
+.DS_Store
+
+# Logs
+logs
+*.log
+
+# Build files
+dist/
+build/
+
+# Misc
+.cache/
+coverage/
