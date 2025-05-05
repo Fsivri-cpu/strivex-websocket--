@@ -52,7 +52,8 @@ app.get('/', (req, res) => {
 });
 
 // Socket map to track connections by thread ID (for webhook callbacks)
-const socketMap = new Map();
+// Her thread ID için birden fazla socket bağlantısını destekler (Set olarak)
+const threadSocketsMap = new Map();
 
 // Webhook endpoints for Relevance AI callbacks
 // Supports both /api/relevance-webhook and /webhook paths
@@ -71,10 +72,10 @@ const handleWebhook = (req, res) => {
       return res.status(400).json({ error: 'No thread_id provided in webhook payload' });
     }
     
-    // Find the socket connection for this thread
-    const socket = socketMap.get(threadId);
+    // Get the set of sockets for this thread ID
+    const socketSet = threadSocketsMap.get(threadId);
     
-    if (!socket) {
+    if (!socketSet || socketSet.size === 0) {
       console.warn(`No active socket found for thread ID: ${threadId}`);
       return res.status(200).json({ 
         status: 'accepted',
@@ -83,13 +84,23 @@ const handleWebhook = (req, res) => {
     }
     
     // Send the response to the client via WebSocket
-    socket.emit('reply', {
-      response: parsedResponse.text,
-      conversationId: parsedResponse.conversation_id,
-      timestamp: new Date().toISOString()
+    console.log(`Sending webhook response to ${socketSet.size} connected clients with thread ID ${threadId}`);
+    
+    // Send the parsed response to all connected clients for this thread via WebSocket
+    let clientCount = 0;
+    socketSet.forEach(socket => {
+      if (socket.connected) {
+        socket.emit('reply', {
+          response: parsedResponse.text,
+          conversationId: parsedResponse.conversation_id,
+          timestamp: new Date().toISOString()
+        });
+        clientCount++;
+        console.log(`Response sent to client (${socket.id}) via WebSocket`);
+      }
     });
     
-    console.log(`Response sent to client (${socket.id}) via WebSocket`);
+    console.log(`Response successfully delivered to ${clientCount} clients`);
     
     // Acknowledge successful webhook processing
     return res.status(200).json({ status: 'success', message: 'Webhook processed successfully' });
@@ -104,6 +115,47 @@ app.post('/api/relevance-webhook', express.json(), handleWebhook);
 
 // Alternative webhook endpoint
 app.post('/webhook', express.json(), handleWebhook);
+
+// Test webhook endpoint - Sadece webhook mesajlarını kaydetmek ve test etmek için
+app.post('/api/test-webhook', express.json(), (req, res) => {
+  console.log('\n📥 TEST WEBHOOK RECEIVED 📥');
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('📤 SENDING TEST WEBHOOK RESPONSE 📤\n');
+  
+  // Webhook isteklerini günlüğe kaydetme fonksiyonu
+  logWebhookRequest(req);
+
+  // Her zaman başarılı yanıt ver
+  res.status(200).json({ 
+    status: 'success',
+    message: 'Test webhook received successfully',
+    timestamp: new Date().toISOString(),
+    echo: req.body
+  });
+});
+
+// Webhook isteklerini günlüğe kaydetme fonksiyonu
+function logWebhookRequest(req) {
+  try {
+    const timestamp = new Date().toISOString();
+    const logData = {
+      timestamp: timestamp,
+      headers: req.headers,
+      body: req.body,
+      ip: req.ip || req.connection.remoteAddress
+    };
+    
+    // Konsola daha detaylı log yazdır
+    console.log(`\n[${timestamp}] Webhook request received from ${logData.ip}`);
+    
+    // Production'da bu logu bir dosyaya veya veritabanına kaydedebilirsiniz
+    // Örneğin: fs.appendFileSync('webhook_logs.json', JSON.stringify(logData) + '\n');
+  } catch (error) {
+    console.error('Error logging webhook request:', error);
+  }
+}
 
 // Configure Socket.IO with CORS settings
 const io = socketIo(server, {
@@ -131,7 +183,6 @@ io.on('connection', (socket) => {
   
   // Store the socket connection in the map with its thread ID
   socket.threadId = threadId;
-  socketMap.set(threadId, socket);
   
   console.log(`Assigned thread ID ${threadId} to client ${socket.id}`);
   
@@ -158,7 +209,12 @@ io.on('connection', (socket) => {
       console.log(`Assigned thread ID ${socket.threadId} to client ${socket.id}`);
       
       // Store this socket in our thread map for webhook callbacks
-      socketMap.set(socket.threadId, socket);
+      if (!threadSocketsMap.has(socket.threadId)) {
+        threadSocketsMap.set(socket.threadId, new Set());
+      }
+      threadSocketsMap.get(socket.threadId).add(socket);
+      
+      console.log(`Socket ${socket.id} added to thread ${socket.threadId}. Total connections for this thread: ${threadSocketsMap.get(socket.threadId).size}`);
       
       // Let the client know their thread ID
       socket.emit('thread_assigned', { threadId: socket.threadId });
@@ -229,10 +285,18 @@ io.on('connection', (socket) => {
   socket.on('disconnect', (reason) => {
     console.log(`Client disconnected: ${socket.id}, Thread ID: ${socket.threadId}, Reason: ${reason}`);
     
-    // Remove from socket map
-    if (socket.threadId) {
-      socketMap.delete(socket.threadId);
-      console.log(`Removed thread ID ${socket.threadId} from socket map`);
+    // Remove from thread sockets map
+    if (socket.threadId && threadSocketsMap.has(socket.threadId)) {
+      const socketSet = threadSocketsMap.get(socket.threadId);
+      socketSet.delete(socket);
+      
+      // If no more sockets for this thread, remove the thread entry
+      if (socketSet.size === 0) {
+        threadSocketsMap.delete(socket.threadId);
+        console.log(`Removed thread ID ${socket.threadId} from thread sockets map (no more connections)`);
+      } else {
+        console.log(`Removed socket ${socket.id} from thread ID ${socket.threadId}. Remaining connections: ${socketSet.size}`);
+      }
     }
   });
   

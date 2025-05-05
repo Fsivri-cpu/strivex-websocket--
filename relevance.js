@@ -67,7 +67,7 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null) {
     // Webhook URL for callback (SERVER_URL must be set in .env)
     const serverUrl = process.env.SERVER_URL;
     if (!serverUrl) {
-      console.warn('Warning: SERVER_URL is not set in environment variables. Webhook callbacks may not work.');
+      throw new Error('SERVER_URL environment variable is required for webhook callbacks');
     }
     
     const webhookUrl = `${serverUrl}/api/relevance-webhook`;
@@ -195,10 +195,25 @@ function parseWebhookResponse(webhookData) {
     };
   }
   
-  // If no recognizable format, return the raw data
+  // If no recognizable format, return the raw data with additional debug info
+  console.warn('Failed to parse webhook response:', JSON.stringify(webhookData, null, 2));
+  
+  // Attempt to extract any useful information from the raw data
+  let extractedText = '';
+  if (typeof webhookData === 'string') {
+    extractedText = webhookData.substring(0, 100); // Take first 100 chars if it's a string
+  } else if (webhookData.message) {
+    extractedText = typeof webhookData.message === 'string' ? 
+      webhookData.message : 'Found message property but not in expected format';
+  } else if (webhookData.error) {
+    extractedText = typeof webhookData.error === 'string' ? 
+      `Error: ${webhookData.error}` : 'Error occurred but details not available';
+  }
+  
   return {
     raw: webhookData,
-    text: 'Could not parse response from webhook data',
+    text: extractedText || 'No response text could be extracted from the webhook data',
+    status: 'unparsed',
     conversation_id: webhookData.conversation_id,
     thread_id: webhookData.thread_id
   };
