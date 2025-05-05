@@ -87,11 +87,16 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null, webho
     
     // Add webhook configuration if URL is provided
     if (webhookUrl) {
+      // URL'deki tüm noktalı virgülleri kaldır (potansiyel JSON hatası)
+      const cleanWebhookUrl = webhookUrl.replace(/;/g, '');
+      
+      // Webhook yapılandırmasını ekle
       requestBody.webhook = {
-        url: webhookUrl,
-        include_thread_id: true  // Ensure thread_id is included in callbacks
+        "url": cleanWebhookUrl,
+        "include_thread_id": true  // Ensure thread_id is included in callbacks
       };
-      console.log(`Using webhook callback URL: ${webhookUrl}`);
+      
+      console.log(`Using webhook callback URL: ${cleanWebhookUrl}`);
     }
     
     console.log(`Sending message to Relevance AI: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);

@@ -40,9 +40,12 @@ router.post('/test', async (req, res) => {
     // Request body
     // Webhook URL oluşturma
     const serverUrl = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`;
-    const webhookUrl = `${serverUrl}/api/relevance-webhook`;
+    
+    // Temiz bir webhook URL'i oluştur - noktalı virgülleri temizle
+    const webhookUrl = `${serverUrl}/webhook`.replace(/;/g, '');
     
     console.log(`Using webhook URL: ${webhookUrl}`);
+    console.log('IMPORTANT: Make sure webhook URL does not contain semicolons that would cause JSON syntax errors');
     
     // Thread ID oluşturma
     const threadId = `thread_${Date.now()}_api_test`;
