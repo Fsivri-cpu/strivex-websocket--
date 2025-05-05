@@ -181,7 +181,7 @@ io.on('connection', (socket) => {
     }
     
     // Log information about the message being sent
-    console.log(`Sending message to Relevance AI using webhook trigger URL`);
+    console.log(`Sending message to Relevance AI using agents/trigger endpoint`);
     console.log(`Thread ID: ${threadId}`);
     
     // Let the client know we're processing their message
@@ -191,8 +191,8 @@ io.on('connection', (socket) => {
     });
 
     try {
-      // Send message to Relevance AI using webhook trigger URL
-      // Not sending webhook URL anymore as we're using the webhook trigger approach
+      // Send message to Relevance AI using the updated agents/trigger endpoint
+      // Webhook URL is now included in the payload to receive response via webhook callback
       const responseData = await sendMessageToRelevanceAI(
         data.message,
         agentId, 
