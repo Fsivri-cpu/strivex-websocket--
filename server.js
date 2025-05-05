@@ -181,7 +181,11 @@ io.on('connection', (socket) => {
       // Generate the webhook callback URL
       // Note: For production, make sure this is publicly accessible
       const serverUrl = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`;
-      const webhookUrl = `${serverUrl}/api/relevance-webhook`;
+      
+      // Tutarlı webhook URL kullan (/webhook) ve JSON syntax hatalarını önlemek için temizle
+      const webhookUrl = `${serverUrl}/webhook`.replace(/;/g, '');
+      
+      console.log(`Sending message to Relevance AI with thread ID ${threadId} and webhook ${webhookUrl}`);
       
       // Let the client know we're processing their message
       socket.emit('processing', {

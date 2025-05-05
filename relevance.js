@@ -38,39 +38,29 @@ console.log('- Default Agent ID:', process.env.AGENT_ID || '(not set)');
 // Not logging API key for security reasons
 
 /**
- * Send a message to the Relevance AI API with webhook callback support
+ * Send a message to the Relevance AI API using the custom webhook trigger URL
  * @param {string} message - Message text to send
- * @param {string} agentId - Relevance AI Agent ID
+ * @param {string} agentId - Relevance AI Agent ID (not used with webhook triggers)
  * @param {string} threadId - Thread ID for conversation tracking
- * @param {string} webhookUrl - URL for webhook callbacks when response is ready
  * @returns {Promise<object>} Response data
  */
-async function sendMessageToRelevanceAI(message, agentId, threadId = null, webhookUrl = null) {
+async function sendMessageToRelevanceAI(message, agentId, threadId = null) {
   try {
     if (!message) {
       throw new Error('Message is required');
     }
-    
-    if (!agentId) {
-      throw new Error('Agent ID is required');
-    }
-    
-    // API token from environment variables - AUTHENTICATION FORMAT FIX
-    // Başarılı test gösterdi ki RAI_AUTH_TOKEN doğru formatta
-    const authToken = process.env.RAI_AUTH_TOKEN;
+
+    // Authorize correctly using the API Key format Relevance AI requires
+    const authToken = RAI_AUTH_TOKEN;
     
     if (!authToken) {
-      throw new Error('Authorization token is required. Set RAI_AUTH_TOKEN in .env file');
+      throw new Error('API key is required');
     }
-    
-    // Token formatı kontrolü - test-api.js'te bu format başarılı oldu
-    console.log('Using auth token pattern:', authToken.includes(':') ? 'project:key format' : 'simple key format');
-    
-    // API endpoint for sending messages - correct endpoint from documentation
-    const triggerEndpoint = `${RELEVANCE_API_BASE_URL}/agents/trigger`;
-    console.log('Using API endpoint:', triggerEndpoint);
-    
-    // Request body with webhook support
+
+    // Determine token format type for correct header formatting
+    console.log(`Using auth token pattern: ${authToken.includes(':') ? 'project:key format' : 'simple key format'}`);
+
+    // Build the request body
     const requestBody = {
       message: {
         role: "user",
@@ -78,41 +68,27 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null, webho
       },
       agent_id: agentId
     };
-    
+
     // Add thread_id for conversation tracking if provided
     if (threadId) {
       requestBody.thread_id = threadId;
       console.log(`Using thread ID: ${threadId}`);
     }
-    
-    // Add webhook configuration if URL is provided
-    if (webhookUrl) {
-      // URL'deki tüm noktalı virgülleri kaldır (potansiyel JSON hatası)
-      const cleanWebhookUrl = webhookUrl.replace(/;/g, '');
-      
-      // Webhook yapılandırmasını ekle
-      requestBody.webhook = {
-        "url": cleanWebhookUrl,
-        "include_thread_id": true  // Ensure thread_id is included in callbacks
-      };
-      
-      console.log(`Using webhook callback URL: ${cleanWebhookUrl}`);
-    }
-    
+
     console.log(`Sending message to Relevance AI: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
-    console.log('Request endpoint:', triggerEndpoint);
-    console.log('Request body:', JSON.stringify(requestBody, null, 2));
     
-    // Basitleştirilmiş API endpoint - test-api.js'te bu çalıştı
-    const apiEndpoint = `https://api-${process.env.RAI_REGION}.stack.tryrelevance.com/latest/agents/trigger`;
-    console.log('Using proven API endpoint:', apiEndpoint);
+    // Relevance AI webhook trigger URL'i - bu sabit URL Relevance AI tarafından sağlanıyor
+    // NOT: Bu URL gizli tutulmalıdır
+    const webhookTriggerUrl = 'https://api-d7b62b.stack.tryrelevance.com/latest/agents/hooks/custom-trigger/36bc24de9987-4ada-be03-afd38ac895a1/d9bd72a6-2c8d-40c7-8f86-bcd9a41b1c9c';
     
-    // Başarılı test edilen API isteği
-    const response = await fetch(apiEndpoint, {
+    console.log('Using Relevance AI Webhook Trigger URL');
+    
+    // Webhook trigger kullanarak API isteği
+    const response = await fetch(webhookTriggerUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': authToken  // Test edilen başarılı token formatı
+        'Authorization': authToken
       },
       body: JSON.stringify(requestBody)
     });

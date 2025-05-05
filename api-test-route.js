@@ -34,40 +34,30 @@ router.post('/test', async (req, res) => {
     console.log(`Testing API with message: ${message}`);
     console.log(`Using agent ID: ${actualAgentId}`);
     
-    // Direk API çağrısı - test-api.js'de çalışan yöntem
-    const API_ENDPOINT = `https://api-${process.env.RAI_REGION}.stack.tryrelevance.com/latest/agents/trigger`;
+    // Relevance AI webhook trigger URL'i
+    const WEBHOOK_TRIGGER_URL = 'https://api-d7b62b.stack.tryrelevance.com/latest/agents/hooks/custom-trigger/36bc24de9987-4ada-be03-afd38ac895a1/d9bd72a6-2c8d-40c7-8f86-bcd9a41b1c9c';
     
-    // Request body
-    // Webhook URL oluşturma
-    const serverUrl = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`;
-    
-    // Temiz bir webhook URL'i oluştur - noktalı virgülleri temizle
-    const webhookUrl = `${serverUrl}/webhook`.replace(/;/g, '');
-    
-    console.log(`Using webhook URL: ${webhookUrl}`);
-    console.log('IMPORTANT: Make sure webhook URL does not contain semicolons that would cause JSON syntax errors');
-    
-    // Thread ID oluşturma
+    // Thread ID oluşturma - Relevance AI webhook trigger için hala gerekli
     const threadId = `thread_${Date.now()}_api_test`;
     
+    // Güvenli payload oluştur - artık webhook URL'i gerektirmiyor
     const payload = {
       message: {
         role: "user",
         content: message
       },
       agent_id: actualAgentId,
-      thread_id: threadId,
-      webhook: {
-        url: webhookUrl,
-        include_thread_id: true
-      }
+      thread_id: threadId
     };
     
-    console.log('API Endpoint:', API_ENDPOINT);
+    console.log('Using Relevance AI Webhook Trigger URL');
+    console.log('Thread ID for API test:', threadId);
+    
+    console.log('Webhook Trigger URL:', WEBHOOK_TRIGGER_URL);
     console.log('Request Payload:', JSON.stringify(payload, null, 2));
     
-    // Direkt fetch ile API isteği - test-api.js'de çalışan yöntem
-    const response = await fetch(API_ENDPOINT, {
+    // Webhook Trigger URL kullanarak API isteği gönder
+    const response = await fetch(WEBHOOK_TRIGGER_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
