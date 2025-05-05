@@ -38,9 +38,9 @@ console.log('- Default Agent ID:', process.env.AGENT_ID || '(not set)');
 // Not logging API key for security reasons
 
 /**
- * Send a message to the Relevance AI API using the custom webhook trigger URL
+ * Send a message to the Relevance AI API using the correct agents/trigger endpoint
  * @param {string} message - Message text to send
- * @param {string} agentId - Relevance AI Agent ID (not used with webhook triggers)
+ * @param {string} agentId - Relevance AI Agent ID
  * @param {string} threadId - Thread ID for conversation tracking
  * @returns {Promise<object>} Response data
  */
@@ -60,13 +60,31 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null) {
     // Determine token format type for correct header formatting
     console.log(`Using auth token pattern: ${authToken.includes(':') ? 'project:key format' : 'simple key format'}`);
 
-    // Build the request body
+    // Doğru endpoint: agents/trigger
+    const triggerUrl = `${RELEVANCE_API_BASE_URL}/agents/trigger`;
+    console.log('Using Relevance AI agents/trigger endpoint:', triggerUrl);
+    
+    // Webhook URL for callback (SERVER_URL must be set in .env)
+    const serverUrl = process.env.SERVER_URL;
+    if (!serverUrl) {
+      console.warn('Warning: SERVER_URL is not set in environment variables. Webhook callbacks may not work.');
+    }
+    
+    const webhookUrl = `${serverUrl}/api/relevance-webhook`;
+    console.log('Using webhook callback URL:', webhookUrl);
+
+    // Build the request body with webhook information
     const requestBody = {
       message: {
         role: "user",
         content: message
       },
-      agent_id: agentId
+      agent_id: agentId,
+      // Add webhook information for callback
+      webhook: {
+        url: webhookUrl,
+        include_thread_id: true
+      }
     };
 
     // Add thread_id for conversation tracking if provided
@@ -77,14 +95,8 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null) {
 
     console.log(`Sending message to Relevance AI: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
     
-    // Relevance AI webhook trigger URL'i - bu sabit URL Relevance AI tarafından sağlanıyor
-    // NOT: Bu URL gizli tutulmalıdır
-    const webhookTriggerUrl = 'https://api-d7b62b.stack.tryrelevance.com/latest/agents/hooks/custom-trigger/36bc24de9987-4ada-be03-afd38ac895a1/d9bd72a6-2c8d-40c7-8f86-bcd9a41b1c9c';
-    
-    console.log('Using Relevance AI Webhook Trigger URL');
-    
-    // Webhook trigger kullanarak API isteği
-    const response = await fetch(webhookTriggerUrl, {
+    // API isteğini doğru endpoint'e gönder
+    const response = await fetch(triggerUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -117,7 +129,6 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null) {
     return {
       conversation_id: responseData.conversation_id,
       thread_id: threadId,
-      webhook_url: webhookUrl,
       status: responseData.state || 'processing',
       timestamp: new Date().toISOString()
     };
