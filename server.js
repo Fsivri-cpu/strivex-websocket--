@@ -54,10 +54,12 @@ app.get('/', (req, res) => {
 // Socket map to track connections by thread ID (for webhook callbacks)
 const socketMap = new Map();
 
-// Webhook endpoint for Relevance AI callbacks
-app.post('/api/relevance-webhook', express.json(), (req, res) => {
+// Webhook endpoints for Relevance AI callbacks
+// Supports both /api/relevance-webhook and /webhook paths
+const handleWebhook = (req, res) => {
   try {
     console.log('Webhook received from Relevance AI');
+    console.log('Webhook URL:', req.originalUrl);
     console.log('Webhook payload:', JSON.stringify(req.body, null, 2));
     
     // Extract the thread_id and parse response
@@ -89,20 +91,19 @@ app.post('/api/relevance-webhook', express.json(), (req, res) => {
     
     console.log(`Response sent to client (${socket.id}) via WebSocket`);
     
-    // Send successful response to Relevance AI
-    res.status(200).json({
-      status: 'success',
-      message: 'Webhook processed successfully'
-    });
-    
+    // Acknowledge successful webhook processing
+    return res.status(200).json({ status: 'success', message: 'Webhook processed successfully' });
   } catch (error) {
     console.error('Error processing webhook:', error);
-    res.status(500).json({ 
-      status: 'error',
-      message: error.message 
-    });
+    return res.status(500).json({ error: 'Error processing webhook' });
   }
-});
+};
+
+// Primary webhook endpoint
+app.post('/api/relevance-webhook', express.json(), handleWebhook);
+
+// Alternative webhook endpoint
+app.post('/webhook', express.json(), handleWebhook);
 
 // Configure Socket.IO with CORS settings
 const io = socketIo(server, {
