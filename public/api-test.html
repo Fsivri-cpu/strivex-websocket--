@@ -103,8 +103,8 @@
             try {
                 updateStatus('Sending message...');
                 
-                // Send message to API using fetch
-                const response = await fetch('/api/send-message', {
+                // Send message to API using fetch (endpoint'i doğru yere gönder)
+                const response = await fetch('/api/test', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

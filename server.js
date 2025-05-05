@@ -27,10 +27,13 @@ const server = http.createServer(app);
 // Configure CORS for Express - Frontend için yetkilendirme
 app.use(cors({
   origin: [
-    'http://localhost:8080',    // Development frontend
-    'http://127.0.0.1:8080',    // Alternative local address
-    process.env.FRONTEND_URL    // Production frontend URL (from .env)
-  ].filter(Boolean),            // Filter out undefined values 
+    'http://localhost:8080',      // Development frontend
+    'http://127.0.0.1:8080',      // Alternative local address
+    process.env.FRONTEND_URL,     // Production frontend URL (from .env)
+    process.env.SERVER_URL,       // Railway URL (production server)
+    'https://strivex-websocket-production.up.railway.app',  // Railway exact domain
+    '*'                           // Geçici olarak tüm originlere izin ver
+  ].filter(Boolean),              // Filter out undefined values
   methods: ['GET', 'POST', 'OPTIONS'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -179,10 +182,18 @@ io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`);
   
   // Generate a unique thread ID for this socket connection
-  const threadId = `thread_${Date.now()}_${socket.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const threadId = `thread_${Date.now()}_${socket.id.replace(/[^a-zA-Z0-9]/g, '')}`;  
   
   // Store the socket connection in the map with its thread ID
   socket.threadId = threadId;
+  
+  // Bağlantı kurulur kurulmaz threadSocketsMap'e ekle (frontend'den mesaj beklemeden)
+  if (!threadSocketsMap.has(threadId)) {
+    threadSocketsMap.set(threadId, new Set());
+  }
+  threadSocketsMap.get(threadId).add(socket);
+  
+  console.log(`Socket ${socket.id} added to thread ${threadId} on connection. Map size for thread: ${threadSocketsMap.get(threadId).size}`);
   
   console.log(`Assigned thread ID ${threadId} to client ${socket.id}`);
   
@@ -300,20 +311,25 @@ io.on('connection', (socket) => {
     }
   });
   
-  // Handle errors
+  // Handle errors - hem socket hem de engine-io hatalarını yakala
   socket.on('error', (error) => {
     console.error(`Socket error for client ${socket.id}:`, error);
     socket.emit('error', { message: 'An error occurred with your connection' });
+  });
+  
+  // Socket.IO engine hataları için
+  socket.io?.engine?.on('error', (error) => {
+    console.error(`Engine error for client ${socket.id}:`, error);
+  });
+  
+  // Socket bağlantı hataları için global handler
+  io.engine?.on('connection_error', (error) => {
+    console.error(`Connection error:`, error);
   });
 
   // Handle ping to keep connection alive
   socket.on('ping', () => {
     socket.emit('pong', { timestamp: new Date().toISOString() });
-  });
-
-  // Handle disconnect event
-  socket.on('disconnect', (reason) => {
-    console.log(`Client disconnected: ${socket.id}, Reason: ${reason}`);
   });
 });
 

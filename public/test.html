@@ -331,7 +331,24 @@
             addMessage('WebSocket sunucusuna bağlandı. Mesajlaşmaya başlayabilirsiniz.', 'status');
             logEvent('connect', 'Socket.IO connected successfully');
             
-            // Start ping measurement
+            // Start ping measurement (basit versiyon)
+            function startPingMeasurement() {
+                // Ping ölçümü için basit fonksiyon
+                setInterval(() => {
+                    const start = Date.now();
+                    
+                    // Ping istegi gönder
+                    socket.emit('ping');
+                    
+                    // Ping cevabını dinle (Socket.IO zaten otomatik olarak ping/pong yapar)
+                    socket.once('pong', () => {
+                        const latency = Date.now() - start;
+                        pingElement.textContent = latency + 'ms';
+                    });
+                }, 5000); // 5 saniyede bir ping ölç
+            }
+            
+            // Ping ölçümünü başlat
             startPingMeasurement();
         });
         
@@ -416,8 +433,8 @@
             // Show typing indicator
             showTyping(true);
             
-            // Send message via Socket.IO
-            socket.emit('send_message', {
+            // Send message via Socket.IO (using 'message' event to match server)
+            socket.emit('message', {
                 messageId: messageId,
                 message: message,
                 agentId: defaultAgentId,
