@@ -178,57 +178,49 @@ io.on('connection', (socket) => {
         return;
       }
       
-      // Generate the webhook callback URL
-      // Note: For production, make sure this is publicly accessible
-      const serverUrl = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`;
-      
-      // Tutarlı webhook URL kullan (/webhook) ve JSON syntax hatalarını önlemek için temizle
-      const webhookUrl = `${serverUrl}/webhook`.replace(/;/g, '');
-      
-      console.log(`Sending message to Relevance AI with thread ID ${threadId} and webhook ${webhookUrl}`);
+      // Log information about the message being sent
+      console.log(`Sending message to Relevance AI using webhook trigger URL`);
+      console.log(`Thread ID: ${threadId}`);
       
       // Let the client know we're processing their message
       socket.emit('processing', {
         messageId: data.messageId,
         status: 'processing'
       });
-      
-      // Send message to Relevance AI with webhook callback
-      console.log(`Sending message to Relevance AI with thread ID ${socket.threadId} and webhook ${webhookUrl}`);
-      
-      const responseData = await sendMessageToRelevanceAI(
-        data.message, 
-        agentId,
-        socket.threadId,
-        webhookUrl
-      );
-      
-      // If we have a conversation_id, send an initial acknowledgment
-      if (responseData && responseData.conversation_id) {
-        // Log that the message was sent and we're waiting for webhook
-        console.log(`Message sent to Relevance AI. Conversation ID: ${responseData.conversation_id}`);
-        console.log(`Waiting for webhook callback to thread ID ${socket.threadId}`);
-        
-        // Send an acknowledgment to the client
-        socket.emit('message_sent', {
+
+      try {
+        // Send message to Relevance AI using webhook trigger URL
+        // Not sending webhook URL anymore as we're using the webhook trigger approach
+        const responseData = await sendMessageToRelevanceAI(
+          data.message,
+          agentId, 
+          threadId
+        );
+
+        // If we have a conversation_id, send an initial acknowledgment
+        if (responseData && responseData.conversation_id) {
+          // Log that the message was sent and we're waiting for webhook
+          console.log(`Message sent to Relevance AI. Conversation ID: ${responseData.conversation_id}`);
+          console.log(`Waiting for webhook callback to thread ID ${threadId}`);
+          
+          // Send an acknowledgment to the client
+          socket.emit('message_sent', {
+            messageId: data.messageId,
+            conversationId: responseData.conversation_id,
+            threadId: threadId,
+            status: 'processing',
+            message: 'Message sent to Relevance AI, waiting for response via webhook'
+          });
+        } else {
+          throw new Error('No valid response from Relevance AI');
+        }
+      } catch (error) {
+        console.error('Error handling message:', error);
+        socket.emit('error', { 
           messageId: data.messageId,
-          conversationId: responseData.conversation_id,
-          threadId: socket.threadId,
-          status: 'processing',
-          message: 'Message sent to Relevance AI, waiting for response via webhook'
+          message: `Error processing your message: ${error.message}`
         });
-        
-      } else {
-        throw new Error('No valid response from Relevance AI');
       }
-      
-    } catch (error) {
-      console.error('Error handling message:', error);
-      socket.emit('error', { 
-        messageId: data.messageId,
-        message: `Error processing your message: ${error.message}`
-      });
-    }
   });
 
   // Handle ping to keep connection alive
