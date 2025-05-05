@@ -141,7 +141,90 @@ io.on('connection', (socket) => {
     message: 'Connected to Relevance AI WebSocket server',
     threadId: threadId
   });
-  
+
+  // Handle incoming messages from clients
+  socket.on('message', async (data) => {
+    console.log(`Received message from client ${socket.id} on thread ${socket.threadId}: ${data.message}`);
+
+    // Validate message content
+    if (!data.message) {
+      socket.emit('error', { message: 'No message content provided' });
+      return;
+    }
+    
+    // If this is a new thread, assign a thread ID
+    if (!socket.threadId) {
+      socket.threadId = `thread_${Date.now()}_${socket.id}`;
+      console.log(`Assigned thread ID ${socket.threadId} to client ${socket.id}`);
+      
+      // Store this socket in our thread map for webhook callbacks
+      socketMap.set(socket.threadId, socket);
+      
+      // Let the client know their thread ID
+      socket.emit('thread_assigned', { threadId: socket.threadId });
+    }
+    
+    // Use the socket's assigned thread ID for this conversation
+    const threadId = socket.threadId;
+    
+    // Track message ID for response matching, generate if not provided
+    if (!data.messageId) {
+      data.messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    }
+      
+    // Get agent ID from data or fallback to env variable
+    const agentId = data.agentId || process.env.AGENT_ID;
+    
+    if (!agentId) {
+      socket.emit('error', { message: 'Agent ID is required' });
+      return;
+    }
+    
+    // Log information about the message being sent
+    console.log(`Sending message to Relevance AI using webhook trigger URL`);
+    console.log(`Thread ID: ${threadId}`);
+    
+    // Let the client know we're processing their message
+    socket.emit('processing', {
+      messageId: data.messageId,
+      status: 'processing'
+    });
+
+    try {
+      // Send message to Relevance AI using webhook trigger URL
+      // Not sending webhook URL anymore as we're using the webhook trigger approach
+      const responseData = await sendMessageToRelevanceAI(
+        data.message,
+        agentId, 
+        threadId
+      );
+
+      // If we have a conversation_id, send an initial acknowledgment
+      if (responseData && responseData.conversation_id) {
+        // Log that the message was sent and we're waiting for webhook
+        console.log(`Message sent to Relevance AI. Conversation ID: ${responseData.conversation_id}`);
+        console.log(`Waiting for webhook callback to thread ID ${threadId}`);
+        
+        // Send an acknowledgment to the client
+        socket.emit('message_sent', {
+          messageId: data.messageId,
+          conversationId: responseData.conversation_id,
+          threadId: threadId,
+          status: 'processing',
+          message: 'Message sent to Relevance AI, waiting for response via webhook'
+        });
+      } else {
+        throw new Error('No valid response from Relevance AI');
+      }
+    } catch (error) {
+      console.error('Error handling message:', error);
+      socket.emit('error', { 
+        messageId: data.messageId,
+        message: `Error processing your message: ${error.message}`
+      });
+    }
+  });
+
   // Handle disconnect - clean up socketMap
   socket.on('disconnect', (reason) => {
     console.log(`Client disconnected: ${socket.id}, Thread ID: ${socket.threadId}, Reason: ${reason}`);
@@ -157,70 +240,6 @@ io.on('connection', (socket) => {
   socket.on('error', (error) => {
     console.error(`Socket error for client ${socket.id}:`, error);
     socket.emit('error', { message: 'An error occurred with your connection' });
-  });
-  
-  // Handle messages from client using webhook callbacks
-  socket.on('send_message', async (data) => {
-    try {
-      console.log(`Received message from client ${socket.id} on thread ${socket.threadId}:`, data.message);
-      
-      // Validate message
-      if (!data.message) {
-        socket.emit('error', { message: 'Message cannot be empty' });
-        return;
-      }
-      
-      // Get agent ID from data or fallback to env variable
-      const agentId = data.agentId || process.env.AGENT_ID;
-      
-      if (!agentId) {
-        socket.emit('error', { message: 'Agent ID is required' });
-        return;
-      }
-      
-      // Log information about the message being sent
-      console.log(`Sending message to Relevance AI using webhook trigger URL`);
-      console.log(`Thread ID: ${threadId}`);
-      
-      // Let the client know we're processing their message
-      socket.emit('processing', {
-        messageId: data.messageId,
-        status: 'processing'
-      });
-
-      try {
-        // Send message to Relevance AI using webhook trigger URL
-        // Not sending webhook URL anymore as we're using the webhook trigger approach
-        const responseData = await sendMessageToRelevanceAI(
-          data.message,
-          agentId, 
-          threadId
-        );
-
-        // If we have a conversation_id, send an initial acknowledgment
-        if (responseData && responseData.conversation_id) {
-          // Log that the message was sent and we're waiting for webhook
-          console.log(`Message sent to Relevance AI. Conversation ID: ${responseData.conversation_id}`);
-          console.log(`Waiting for webhook callback to thread ID ${threadId}`);
-          
-          // Send an acknowledgment to the client
-          socket.emit('message_sent', {
-            messageId: data.messageId,
-            conversationId: responseData.conversation_id,
-            threadId: threadId,
-            status: 'processing',
-            message: 'Message sent to Relevance AI, waiting for response via webhook'
-          });
-        } else {
-          throw new Error('No valid response from Relevance AI');
-        }
-      } catch (error) {
-        console.error('Error handling message:', error);
-        socket.emit('error', { 
-          messageId: data.messageId,
-          message: `Error processing your message: ${error.message}`
-        });
-      }
   });
 
   // Handle ping to keep connection alive
