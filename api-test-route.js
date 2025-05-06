@@ -58,16 +58,17 @@ router.post('/test', async (req, res) => {
       },
       agent_id: actualAgentId,
       thread_id: threadId,
-      // Sadece basit string webhook formatı kullan
-      // URL sonunda hiçbir şekilde noktalı virgül olmasın
+      // Tüm olası webhook formatlarını bir arada deneyelim
+      webhook: {
+        url: webhookUrl.toString().replace(/;/g, ''),
+        include_thread_id: true
+      },
       webhook_url: webhookUrl.toString().replace(/;/g, ''),
-      
-      // Tek webhook formatı kullan, diğerlerini kaldır
-      // webhook: {
-      //   url: webhookUrl,
-      //   include_thread_id: true
-      // },
-      // callback_url: webhookUrl
+      callback_url: webhookUrl.toString().replace(/;/g, ''),
+      callbackUrl: webhookUrl.toString().replace(/;/g, ''),
+      callback: {
+        url: webhookUrl.toString().replace(/;/g, '')
+      }
     };
     
     console.log('Using Relevance AI agents/trigger endpoint:', triggerUrl);

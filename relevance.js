@@ -38,13 +38,135 @@ console.log('- Default Agent ID:', process.env.AGENT_ID || '(not set)');
 // Not logging API key for security reasons
 
 /**
+ * Get job status from Relevance AI
+ * 
+ * @param {string} jobId - The job ID to check
+ * @returns {Promise<Object>} - The job status
+ */
+async function getJobStatus(jobId) {
+  try {
+    if (!jobId) {
+      throw new Error('Job ID is required');
+    }
+
+    const authToken = process.env.RAI_AUTH_TOKEN;
+    if (!authToken) {
+      throw new Error('RAI_AUTH_TOKEN environment variable is required');
+    }
+
+    const jobUrl = `${RELEVANCE_API_BASE_URL}/jobs/status?job_id=${jobId}`;
+    console.log(`Checking job status at: ${jobUrl}`);
+
+    const response = await fetch(jobUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': authToken
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get job status: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log(`Job status: ${data.status}, Job state: ${data.state || 'unknown'}`);
+    return data;
+  } catch (error) {
+    console.error('Error getting job status:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Poll for job status until completed
+ * 
+ * @param {string} jobId - The job ID to poll
+ * @param {function} onComplete - Callback when job completes
+ * @param {number} maxAttempts - Maximum number of polling attempts
+ * @param {number} interval - Polling interval in milliseconds
+ */
+async function pollJobStatus(jobId, onComplete, maxAttempts = 10, interval = 6000) {
+  console.log(`Starting job polling for job ID: ${jobId}`);
+  let attempts = 0;
+
+  const poll = async () => {
+    try {
+      attempts++;
+      console.log(`Polling attempt ${attempts}/${maxAttempts} for job ${jobId}`);
+      
+      const jobData = await getJobStatus(jobId);
+      
+      // Job completed successfully
+      if (jobData.state === 'completed' || jobData.status === 'completed') {
+        console.log('Job completed, processing response');
+        // Parse the response data, might be in different formats
+        let responseText = '';
+        
+        if (jobData.output?.text) {
+          responseText = jobData.output.text;
+        } else if (jobData.response) {
+          responseText = jobData.response;
+        } else if (jobData.result) {
+          responseText = typeof jobData.result === 'string' ? 
+            jobData.result : JSON.stringify(jobData.result);
+        } else if (jobData.content) {
+          responseText = jobData.content;
+        } else {
+          responseText = 'Job completed, but no response text found';
+        }
+        
+        onComplete({
+          text: responseText,
+          conversation_id: jobData.conversation_id,
+          job_data: jobData
+        });
+        return;
+      }
+      
+      // Job failed
+      if (jobData.state === 'failed' || jobData.status === 'failed') {
+        console.error('Job failed:', jobData.error || 'Unknown error');
+        onComplete({
+          text: `Error: ${jobData.error || 'Job failed'}`,
+          error: true,
+          job_data: jobData
+        });
+        return;
+      }
+      
+      // Job still processing, continue polling
+      if (attempts < maxAttempts) {
+        setTimeout(poll, interval);
+      } else {
+        console.error('Max polling attempts reached');
+        onComplete({
+          text: 'Timeout: Job processing took too long',
+          error: true,
+          job_data: jobData
+        });
+      }
+    } catch (error) {
+      console.error('Error polling job status:', error);
+      onComplete({
+        text: `Polling error: ${error.message}`,
+        error: true
+      });
+    }
+  };
+  
+  // Start polling
+  poll();
+}
+
+/**
  * Send a message to the Relevance AI API using the correct agents/trigger endpoint
  * @param {string} message - Message text to send
  * @param {string} agentId - Relevance AI Agent ID
  * @param {string} threadId - Thread ID for conversation tracking
+ * @param {function} socketCallback - Optional callback to send events to the socket
  * @returns {Promise<object>} Response data
  */
-async function sendMessageToRelevanceAI(message, agentId, threadId = null) {
+async function sendMessageToRelevanceAI(message, agentId, threadId = null, socketCallback = null) {
   try {
     if (!message) {
       throw new Error('Message is required');
@@ -84,16 +206,17 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null) {
         content: message
       },
       agent_id: agentId,
-      // Sadece basit string webhook formatını kullan
-      // URL sonunda hiçbir şekilde noktalı virgül olmasın
+      // Tüm olası webhook formatlarını bir arada deneyelim
+      webhook: {
+        url: webhookUrl.toString().replace(/;/g, ''),
+        include_thread_id: true
+      },
       webhook_url: webhookUrl.toString().replace(/;/g, ''),
-      
-      // Tek webhook formatı kullan, diğerlerini kaldır
-      // webhook: {
-      //   url: webhookUrl,
-      //   include_thread_id: true
-      // },
-      // callback_url: webhookUrl
+      callback_url: webhookUrl.toString().replace(/;/g, ''),
+      callbackUrl: webhookUrl.toString().replace(/;/g, ''),
+      callback: {
+        url: webhookUrl.toString().replace(/;/g, '')
+      }
     };
 
     // Add thread_id for conversation tracking if provided
@@ -134,10 +257,46 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null) {
     console.log('API Response Data:', JSON.stringify(responseData, null, 2));
     console.log('Successfully sent message to Relevance AI:', responseData.conversation_id || 'No conversation ID');
     
+    // Job ID ve webhook yedekleme mekanizması
+    const jobId = responseData.job_info?.job_id;
+    const conversationId = responseData.conversation_id;
+    
+    if (jobId && socketCallback) {
+      console.log(`Setting up backup polling for job ID: ${jobId} - Will poll if webhook doesn't arrive`);
+      
+      // 10 saniye sonra webhook hala gelmezse polling başlat
+      setTimeout(() => {
+        console.log(`Webhook timeout for job ${jobId}, starting polling fallback...`);
+        
+        // Polling başlamadan önce socket'e işlem başladı bilgisi gönder
+        socketCallback('processing', {
+          messageId: 'polling-' + jobId,
+          message: 'Webhook not received, starting polling fallback...'
+        });
+        
+        // Job durumunu pollayarak sonucu al
+        pollJobStatus(jobId, (result) => {
+          if (result.error) {
+            socketCallback('error', {
+              message: result.text,
+              error: result.error
+            });
+          } else {
+            socketCallback('reply', {
+              response: result.text,
+              conversationId: result.conversation_id || conversationId,
+              timestamp: new Date().toISOString()
+            });
+          }
+        }, 10, 6000); // 10 deneme, 6 saniye arayla (toplam 1 dakika)
+      }, 10000); // 10 saniye webhook için bekle
+    }
+    
     // Return structured response with conversation_id (used as messageId) and status
     return {
       conversation_id: responseData.conversation_id,
       thread_id: threadId,
+      job_id: jobId,
       status: responseData.state || 'processing',
       timestamp: new Date().toISOString()
     };

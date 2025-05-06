@@ -84,12 +84,14 @@ const handleWebhook = (req, res) => {
         const threadId = req.body.thread_id || 
                        req.body.threadId || 
                        req.body.conversation_id ||
-                       (req.body.task && req.body.task.thread_id);
+                       (req.body.task && req.body.task.thread_id) ||
+                       req.body.id; // Herhangi bir ID alanını kontrol et
         
         console.log(`Identified thread_id: ${threadId}`);
         
         if (!threadId) {
-          console.error('No thread_id found in webhook payload');
+          console.error('No thread_id or conversation_id found in webhook payload');
+          console.log('Full payload for debugging:', JSON.stringify(req.body, null, 2));
           return;
         }
         
@@ -324,10 +326,37 @@ io.on('connection', (socket) => {
     try {
       // Send message to Relevance AI using the updated agents/trigger endpoint
       // Webhook URL is now included in the payload to receive response via webhook callback
+      // Socket callback ekleyerek webhook gelmezse polling yedek mekanizmasını aktifleştir
       const responseData = await sendMessageToRelevanceAI(
         data.message,
         agentId, 
-        threadId
+        threadId,
+        // Socket callback fonksiyonu - webhook gelmezse polling ile yanıt almak için
+        (eventType, eventData) => {
+          switch(eventType) {
+            case 'processing':
+              socket.emit('processing', {
+                messageId: eventData.messageId || data.messageId,
+                status: 'processing',
+                message: eventData.message || 'Backup polling started'
+              });
+              break;
+            case 'reply':
+              socket.emit('reply', {
+                messageId: data.messageId,
+                response: eventData.response,
+                conversationId: eventData.conversationId || responseData.conversation_id
+              });
+              break;
+            case 'error':
+              socket.emit('error', {
+                messageId: data.messageId,
+                message: eventData.message || 'Error from polling',
+                error: eventData.error
+              });
+              break;
+          }
+        }
       );
 
       // If we have a conversation_id, send an initial acknowledgment
