@@ -249,14 +249,41 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null, socke
 
     console.log(`Sending message to Relevance AI: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
     
-    // API isteğini doğru endpoint'e gönder
+    // Özel bir body json string oluşturalım
+    // Bu şekilde kontrollü bir şekilde string inşa edeceğiz
+    const cleanWebhookUrl = webhookUrl.split(';').join(''); // Son kez emin olalım
+    
+    // Tamamen manual olarak JSON oluşturalım, hiçbir escape karakteri olmasın
+    const requestBodyJSON = `{
+      "message": {
+        "role": "user",
+        "content": ${JSON.stringify(message)}
+      },
+      "agent_id": "${agentId}",
+      "webhook": {
+        "url": "${cleanWebhookUrl}",
+        "include_thread_id": true
+      },
+      "webhook_url": "${cleanWebhookUrl}",
+      "callback_url": "${cleanWebhookUrl}",
+      "callbackUrl": "${cleanWebhookUrl}",
+      "callback": {
+        "url": "${cleanWebhookUrl}"
+      }${threadId ? `,
+      "thread_id": "${threadId}"` : ''}
+    }`;
+    
+    // String olarak JSON içeriğini kontrol edelim
+    console.log('Manual JSON request body (ilk 200 karakter):', requestBodyJSON.substring(0, 200) + '...');
+    
+    // API isteğini doğru endpoint'e gönder - manuel JSON stringi kullan
     const response = await fetch(triggerUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': authToken
       },
-      body: JSON.stringify(requestBody)
+      body: requestBodyJSON
     });
     
     console.log('API istekte kullanılan header bilgileri:', {
@@ -264,7 +291,13 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null, socke
       'Authorization': 'MASKED_FOR_SECURITY'
     });
     
-    console.log('API isteği gövdesi:', JSON.stringify(requestBody, null, 2));
+    // Parse the manual JSON string to log it in a formatted way
+    try {
+      const parsedBody = JSON.parse(requestBodyJSON);
+      console.log('API isteği gövdesi:', JSON.stringify(parsedBody, null, 2));
+    } catch (e) {
+      console.log('API isteği gövdesi (raw):', requestBodyJSON);
+    }
     
     // Check for HTTP errors
     if (!response.ok) {
