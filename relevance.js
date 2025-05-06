@@ -200,8 +200,11 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null, socke
     }
     
     // URL'yi oluştururken noktalı virgül gibi karakterlerin olmadığından emin olalım
-    // Önce gereksiz whitespace karakterlerini temizleyelim
-    const cleanServerUrl = serverUrl.trim();
+    // Daha kapsamlı temizleme işlemi yapalım
+    const cleanServerUrl = serverUrl.trim()
+      .replace(/;/g, '') // Noktalı virgülleri temizle
+      .replace(/\"/g, '') // Çift tırnakları temizle
+      .replace(/\s+/g, ''); // Tüm whitespace karakterleri temizle
     
     // Slash ile bitiyorsa, fazladan slash eklenmesini önleyelim
     const baseUrl = cleanServerUrl.endsWith('/') ? cleanServerUrl.slice(0, -1) : cleanServerUrl;
