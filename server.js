@@ -7,6 +7,8 @@ import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { fetch } from 'undici';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // Load environment variables
 dotenv.config();
@@ -17,6 +19,14 @@ const server = http.createServer(app);
 
 // Simplified CORS setting
 app.use(cors({ origin: "*" }));
+
+// Get current directory (ESM compatible)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve static files from the public directory
+app.use(express.static(path.join(__dirname, 'public')));
+console.log(`Serving static files from: ${path.join(__dirname, 'public')}`);
 
 // Basic health check endpoint
 app.get('/', (req, res) => {
@@ -113,4 +123,5 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`WebSocket server listening on port ${PORT}`);
   console.log(`Make sure FastAPI service is running at ${process.env.PY_CHAT_URL || 'http://localhost:8000'}`);
+  console.log(`Test page should be available at: http://localhost:${PORT}/test.html`);
 });

@@ -21,6 +21,12 @@ client = RelevanceAI()  # Automatically picks up credentials from env
 app = FastAPI()
 
 
+@app.get("/healthz")
+def health_check():
+    """Health check endpoint for monitoring service status"""
+    return {"status": "ok", "service": "Relevance AI Chat Service"}
+
+
 @app.post("/chat")
 async def chat(req: Request):
     """Primary chat endpoint used by Node/Socket.IO backend.
@@ -83,9 +89,13 @@ async def chat(req: Request):
         return JSONResponse({"error": f"Failed to trigger task: {str(e)}"}, status_code=500)
 
     try:
+        # Get polling timeout from environment or use default
+        timeout = int(os.getenv("POLL_TIMEOUT", 30))
+        print(f"Polling for response with timeout: {timeout}s")
+        
         output = client.tasks.wait_for_completion(
             task.conversation_id,
-            timeout=int(os.getenv("POLL_TIMEOUT", 30)),   # seconds configurable via env
+            timeout=timeout,
         )
     except Exception as e:
         return JSONResponse({"error": f"Polling failed: {str(e)}"}, status_code=500)
