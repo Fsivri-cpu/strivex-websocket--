@@ -39,9 +39,19 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// JSON ve URL encoded middleware
+// Genel JSON ve URL encoded middleware - varsayılan boyut limiti (1MB)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Webhook endpoint'leri için özel olarak daha yüksek limit tanımlayalım (5MB)
+// Relevance'dan gelen büyük payload'ları işleyebilmek için
+const webhookBodyParser = express.json({ 
+  limit: '5mb',
+  verify: (req, res, buf) => {
+    // Raw body'yi sakla (imza doğrulaması için kullanılabilir)
+    req.rawBody = buf;
+  }
+});
 
 // Mount API test router
 app.use('/api', apiTestRouter);
@@ -80,18 +90,34 @@ const threadSocketsMap = new Map();
 const handleWebhook = (req, res) => {
   try {
     console.log('----------------------------------------');
-    console.log('📫 WEBHOOK RECEIVED FROM RELEVANCE AI 📫');
+    console.log('📣 WEBHOOK RECEIVED FROM RELEVANCE AI 📣');
     console.log('Webhook URL:', req.originalUrl);
+    console.log('Webhook HTTP Method:', req.method);
+    console.log('Webhook IP Address:', req.ip);
     console.log('Webhook Headers:', JSON.stringify(req.headers, null, 2));
-    console.log('Webhook Body:', JSON.stringify(req.body, null, 2));
+    
+    // Body'nin varlığını kontrol et
+    if (req.body) {
+      console.log('Webhook Body Size (bytes):', JSON.stringify(req.body).length);
+      console.log('Webhook Body:', JSON.stringify(req.body, null, 2));
+    } else {
+      console.log('WARNING: Request body is empty or not parsed');
+    }
+    
     console.log('Timestamp:', new Date().toISOString());
     
     // Always return a success response immediately to prevent timeouts
+    // Status 200 döndürmemiz çok önemli - Relevance bunu bekliyor
     res.status(200).json({ 
       status: 'success',
       message: 'Webhook received and processing',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      server: 'strivex-websocket',
+      url: req.originalUrl
     });
+    
+    // Lütfen dikkat: Bu noktadan sonra herhangi bir res.send() veya res.json() kullanılmamalı
+    // Çünkü yanıt zaten gönderildi
     
     // Now process the webhook data after sending the response
     // This prevents timeouts
@@ -158,11 +184,21 @@ const handleWebhook = (req, res) => {
   }
 };
 
-// Primary webhook endpoint
-app.post('/api/relevance-webhook', express.json(), handleWebhook);
+// Primary webhook endpoint - genislemiş body parser ile
+app.post('/api/relevance-webhook', webhookBodyParser, (req, res) => {
+  console.log('Webhook endpoint called with method:', req.method);
+  console.log('Content-Type:', req.headers['content-type']);
+  handleWebhook(req, res);
+});
 
-// Alternative webhook endpoint
-app.post('/webhook', express.json(), handleWebhook);
+// Alternative webhook endpoint - genislemiş body parser ile
+app.post('/webhook', webhookBodyParser, (req, res) => {
+  console.log('Alternative webhook endpoint called');
+  handleWebhook(req, res);
+});
+
+// Açık bir şekilde webhook URL'yi log'layalım
+console.log(`Webhook endpoints configured and listening at:\n- ${process.env.SERVER_URL}/api/relevance-webhook\n- ${process.env.SERVER_URL}/webhook`);
 
 // Test webhook endpoint - Sadece webhook mesajlarını kaydetmek ve test etmek için
 app.post('/api/test-webhook', express.json(), (req, res) => {
