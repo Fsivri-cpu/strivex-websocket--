@@ -51,14 +51,18 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null) {
     }
 
     // Authorize correctly using the API Key format Relevance AI requires
-    const authToken = RAI_AUTH_TOKEN;
-    
+    const authToken = process.env.RAI_AUTH_TOKEN;
     if (!authToken) {
-      throw new Error('API key is required');
+      throw new Error('RAI_AUTH_TOKEN environment variable is required for Relevance AI API calls');
     }
-
-    // Determine token format type for correct header formatting
-    console.log(`Using auth token pattern: ${authToken.includes(':') ? 'project:key format' : 'simple key format'}`);
+    
+    // Check token format and log a clear warning if it might be incorrect
+    const isProjectFormat = authToken.includes(':');
+    console.log(`Using auth token pattern: ${isProjectFormat ? 'project:key format' : 'simple key format'}`);
+    
+    if (!isProjectFormat) {
+      console.warn('WARNING: Your RAI_AUTH_TOKEN may not be in the correct format. Some Relevance AI plans require "project:PROJECT_ID:KEY" format.');
+    }
 
     // Doğru endpoint: agents/trigger
     const triggerUrl = `${RELEVANCE_API_BASE_URL}/agents/trigger`;
@@ -80,11 +84,14 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null) {
         content: message
       },
       agent_id: agentId,
-      // Add webhook information for callback
+      // Add webhook information for callback - multiple formats for compatibility
       webhook: {
         url: webhookUrl,
         include_thread_id: true
-      }
+      },
+      // Alternative webhook format (may be required in certain API versions)
+      webhook_url: webhookUrl,
+      callback_url: webhookUrl
     };
 
     // Add thread_id for conversation tracking if provided
@@ -200,6 +207,26 @@ function parseWebhookResponse(webhookData) {
   
   // Attempt to extract any useful information from the raw data
   let extractedText = '';
+  
+  // Format 5: content property (yeni API versiyon)
+  if (webhookData.content) {
+    return {
+      text: typeof webhookData.content === 'string' ? webhookData.content : JSON.stringify(webhookData.content),
+      conversation_id: webhookData.conversation_id || webhookData.thread_id,
+      thread_id: webhookData.thread_id
+    };
+  }
+
+  // Format 6: data.content property (nested response)
+  if (webhookData.data && webhookData.data.content) {
+    return {
+      text: typeof webhookData.data.content === 'string' ? webhookData.data.content : JSON.stringify(webhookData.data.content),
+      conversation_id: webhookData.data.conversation_id || webhookData.thread_id,
+      thread_id: webhookData.thread_id
+    };
+  }
+  
+  // Diğer olası formatlar
   if (typeof webhookData === 'string') {
     extractedText = webhookData.substring(0, 100); // Take first 100 chars if it's a string
   } else if (webhookData.message) {
@@ -208,6 +235,8 @@ function parseWebhookResponse(webhookData) {
   } else if (webhookData.error) {
     extractedText = typeof webhookData.error === 'string' ? 
       `Error: ${webhookData.error}` : 'Error occurred but details not available';
+  } else if (webhookData.job_info && webhookData.job_info.status === 'failed') {
+    extractedText = `Job failed: ${webhookData.job_info.error || 'Unknown error'}`;
   }
   
   return {

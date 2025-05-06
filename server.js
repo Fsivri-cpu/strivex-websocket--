@@ -62,51 +62,77 @@ const threadSocketsMap = new Map();
 // Supports both /api/relevance-webhook and /webhook paths
 const handleWebhook = (req, res) => {
   try {
-    console.log('Webhook received from Relevance AI');
+    console.log('----------------------------------------');
+    console.log('📫 WEBHOOK RECEIVED FROM RELEVANCE AI 📫');
     console.log('Webhook URL:', req.originalUrl);
-    console.log('Webhook payload:', JSON.stringify(req.body, null, 2));
+    console.log('Webhook Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('Webhook Body:', JSON.stringify(req.body, null, 2));
+    console.log('Timestamp:', new Date().toISOString());
     
-    // Extract the thread_id and parse response
-    const threadId = req.body.thread_id;
-    const parsedResponse = parseWebhookResponse(req.body);
-    
-    if (!threadId) {
-      console.error('No thread_id found in webhook payload');
-      return res.status(400).json({ error: 'No thread_id provided in webhook payload' });
-    }
-    
-    // Get the set of sockets for this thread ID
-    const socketSet = threadSocketsMap.get(threadId);
-    
-    if (!socketSet || socketSet.size === 0) {
-      console.warn(`No active socket found for thread ID: ${threadId}`);
-      return res.status(200).json({ 
-        status: 'accepted',
-        message: 'Webhook received, but no active socket found for this thread ID'
-      });
-    }
-    
-    // Send the response to the client via WebSocket
-    console.log(`Sending webhook response to ${socketSet.size} connected clients with thread ID ${threadId}`);
-    
-    // Send the parsed response to all connected clients for this thread via WebSocket
-    let clientCount = 0;
-    socketSet.forEach(socket => {
-      if (socket.connected) {
-        socket.emit('reply', {
-          response: parsedResponse.text,
-          conversationId: parsedResponse.conversation_id,
-          timestamp: new Date().toISOString()
-        });
-        clientCount++;
-        console.log(`Response sent to client (${socket.id}) via WebSocket`);
-      }
+    // Always return a success response immediately to prevent timeouts
+    res.status(200).json({ 
+      status: 'success',
+      message: 'Webhook received and processing',
+      timestamp: new Date().toISOString()
     });
     
-    console.log(`Response successfully delivered to ${clientCount} clients`);
-    
-    // Acknowledge successful webhook processing
-    return res.status(200).json({ status: 'success', message: 'Webhook processed successfully' });
+    // Now process the webhook data after sending the response
+    // This prevents timeouts
+    setTimeout(() => {
+      try {
+        // Extract thread_id from multiple possible locations
+        const threadId = req.body.thread_id || 
+                       req.body.threadId || 
+                       req.body.conversation_id ||
+                       (req.body.task && req.body.task.thread_id);
+        
+        console.log(`Identified thread_id: ${threadId}`);
+        
+        if (!threadId) {
+          console.error('No thread_id found in webhook payload');
+          return;
+        }
+        
+        // Try using our standard parser first
+        const parsedResponse = parseWebhookResponse(req.body);
+        
+        // Get the set of sockets for this thread ID
+        const socketSet = threadSocketsMap.get(threadId);
+        
+        if (!socketSet || socketSet.size === 0) {
+          console.warn(`No active socket found for thread ID: ${threadId}`);
+          
+          // Debug: list all active threads
+          console.log('Active threads:');
+          for (const [key, value] of threadSocketsMap.entries()) {
+            console.log(`- ${key}: ${value.size} connections`);
+          }
+          
+          return;
+        }
+        
+        // Send the response to the client via WebSocket
+        console.log(`Sending webhook response to ${socketSet.size} connected clients with thread ID ${threadId}`);
+        
+        // Send the parsed response to all connected clients for this thread via WebSocket
+        let clientCount = 0;
+        socketSet.forEach(socket => {
+          if (socket.connected) {
+            socket.emit('reply', {
+              response: parsedResponse.text,
+              conversationId: parsedResponse.conversation_id,
+              timestamp: new Date().toISOString()
+            });
+            clientCount++;
+            console.log(`Response sent to client (${socket.id}) via WebSocket`);
+          }
+        });
+        
+        console.log(`Response successfully delivered to ${clientCount} clients`);
+      } catch (error) {
+        console.error('Error processing webhook after response:', error);
+      }
+    }, 0);
   } catch (error) {
     console.error('Error processing webhook:', error);
     return res.status(500).json({ error: 'Error processing webhook' });
@@ -138,6 +164,44 @@ app.post('/api/test-webhook', express.json(), (req, res) => {
     echo: req.body
   });
 });
+
+// Detailed test webhook endpoint with verbose logging
+app.post('/api/test-webhook-verbose', express.json(), (req, res) => {
+  console.log('----------------------------------------');
+  console.log('🔍 TEST WEBHOOK RECEIVED - VERBOSE LOG 🔍');
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+  console.log('URL:', req.url);
+  console.log('Method:', req.method);
+  console.log('IP:', req.ip);
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('----------------------------------------');
+  
+  // Always return success to Relevance AI
+  res.status(200).json({ 
+    status: 'success',
+    message: 'Test webhook received and logged',
+    echo: req.body
+  });
+});
+
+// Debug function to print all active threads and connections
+function logActiveThreads() {
+  console.log('----------------------------------------');
+  console.log('ACTIVE THREADS:');
+  let totalConnections = 0;
+  
+  for (const [threadId, socketSet] of threadSocketsMap.entries()) {
+    console.log(`- ${threadId}: ${socketSet.size} connections`);
+    totalConnections += socketSet.size;
+  }
+  
+  console.log(`Total: ${threadSocketsMap.size} threads, ${totalConnections} connections`);
+  console.log('----------------------------------------');
+}
+
+// Call this function periodically and after connections/disconnections
+setInterval(logActiveThreads, 60000); // Log every minute
 
 // Webhook isteklerini günlüğe kaydetme fonksiyonu
 function logWebhookRequest(req) {

@@ -58,23 +58,41 @@ router.post('/test', async (req, res) => {
       },
       agent_id: actualAgentId,
       thread_id: threadId,
-      // Add webhook information for callback
+      // Add webhook information for callback - multiple formats for compatibility
       webhook: {
         url: webhookUrl,
         include_thread_id: true
-      }
+      },
+      // Alternative webhook format (may be required in certain API versions)
+      webhook_url: webhookUrl,
+      callback_url: webhookUrl
     };
     
     console.log('Using Relevance AI agents/trigger endpoint:', triggerUrl);
     console.log('Thread ID for API test:', threadId);
     console.log('Request Payload:', JSON.stringify(payload, null, 2));
     
+    // Auth token kontrolü
+    const authToken = process.env.RAI_AUTH_TOKEN;
+    if (!authToken) {
+      return res.status(500).json({
+        success: false,
+        error: 'RAI_AUTH_TOKEN environment variable is not set'
+      });
+    }
+    
+    // Token format kontrolü
+    const isProjectFormat = authToken.includes(':');
+    if (!isProjectFormat) {
+      console.warn('WARNING: Your RAI_AUTH_TOKEN may not be in the correct format. Some Relevance AI plans require "project:PROJECT_ID:KEY" format.');
+    }
+    
     // Agents/trigger endpoint kullanarak API isteği gönder
     const response = await fetch(triggerUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': process.env.RAI_AUTH_TOKEN
+        'Authorization': authToken
       },
       body: JSON.stringify(payload)
     });
@@ -108,13 +126,24 @@ router.post('/test', async (req, res) => {
       });
     }
     
-    // Başarılı ilk yanıtı döndür
+    // job_id ve diğer önemli bilgileri çıkart
+    const jobId = responseData.job_info?.job_id;
+    const webhookInfo = {
+      url: webhookUrl,
+      serverUrl: serverUrl,
+      thread_id: threadId
+    };
+    
+    // Başarılı ilk yanıtı döndür (polling için job_id dahil)
     res.json({
       success: true,
       message: 'Relevance AI ile bağlantı başarılı!',
       conversationId: conversationId,
+      jobId: jobId || 'Not available',
+      webhookInfo: webhookInfo,
       apiResponse: responseData,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      note: 'Webhook gelmezse, jobId kullanarak /jobs/${jobId} endpoint\'inden polling yapabilirsiniz.'
     });
   } catch (error) {
     console.error('Error processing API test request:', error);
