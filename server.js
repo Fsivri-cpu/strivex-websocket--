@@ -54,6 +54,23 @@ app.get('/', (req, res) => {
   res.send('Relevance AI WebSocket Server is running.');
 });
 
+// Simple webhook test endpoint that can be accessed via browser
+app.get('/api/test-webhook-get', (req, res) => {
+  console.log('----------------------------------------');
+  console.log('🔎 GET WEBHOOK TEST RECEIVED 🔎');
+  console.log('Query params:', req.query);
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('----------------------------------------');
+  
+  res.status(200).json({ 
+    success: true,
+    message: 'GET webhook test received successfully',
+    timestamp: new Date().toISOString(),
+    note: 'If you can see this response, your webhook endpoint is accessible from outside'
+  });
+});
+
 // Socket map to track connections by thread ID (for webhook callbacks)
 // Her thread ID için birden fazla socket bağlantısını destekler (Set olarak)
 const threadSocketsMap = new Map();
