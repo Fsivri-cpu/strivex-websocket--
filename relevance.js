@@ -54,12 +54,15 @@ async function getJobStatus(jobId) {
       throw new Error('RAI_AUTH_TOKEN environment variable is required');
     }
 
-    const jobUrl = `${RELEVANCE_API_BASE_URL}/jobs/status?job_id=${jobId}`;
+    // Relevance AI'da job status sorgulamak için doğru endpoint formatını kullanalım
+    // Daha önce kullanıcı deneyimlerine göre job status API'si aşağıdaki formatta olmalı
+    const jobUrl = `${RELEVANCE_API_BASE_URL}/agents/tasks/${jobId}/view`;
     console.log(`Checking job status at: ${jobUrl}`);
 
     const response = await fetch(jobUrl, {
       method: 'GET',
       headers: {
+        'Content-Type': 'application/json',
         'Authorization': authToken
       }
     });
@@ -196,7 +199,15 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null, socke
       throw new Error('SERVER_URL environment variable is required for webhook callbacks');
     }
     
-    const webhookUrl = `${serverUrl}/api/relevance-webhook`;
+    // URL'yi oluştururken noktalı virgül gibi karakterlerin olmadığından emin olalım
+    // Önce gereksiz whitespace karakterlerini temizleyelim
+    const cleanServerUrl = serverUrl.trim();
+    
+    // Slash ile bitiyorsa, fazladan slash eklenmesini önleyelim
+    const baseUrl = cleanServerUrl.endsWith('/') ? cleanServerUrl.slice(0, -1) : cleanServerUrl;
+    
+    // Temiz URL'yi oluşturalım
+    const webhookUrl = `${baseUrl}/api/relevance-webhook`;
     console.log('Using webhook callback URL:', webhookUrl);
 
     // Build the request body with webhook information
@@ -206,16 +217,16 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null, socke
         content: message
       },
       agent_id: agentId,
-      // Tüm olası webhook formatlarını bir arada deneyelim
+      // Tüm olası webhook formatlarını temiz URL ile deneyelim
       webhook: {
-        url: webhookUrl.toString().replace(/;/g, ''),
+        url: webhookUrl,
         include_thread_id: true
       },
-      webhook_url: webhookUrl.toString().replace(/;/g, ''),
-      callback_url: webhookUrl.toString().replace(/;/g, ''),
-      callbackUrl: webhookUrl.toString().replace(/;/g, ''),
+      webhook_url: webhookUrl,
+      callback_url: webhookUrl,
+      callbackUrl: webhookUrl,
       callback: {
-        url: webhookUrl.toString().replace(/;/g, '')
+        url: webhookUrl
       }
     };
 
