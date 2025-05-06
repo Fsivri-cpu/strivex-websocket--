@@ -249,34 +249,44 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null, socke
 
     console.log(`Sending message to Relevance AI: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
     
-    // Özel bir body json string oluşturalım
-    // Bu şekilde kontrollü bir şekilde string inşa edeceğiz
-    const cleanWebhookUrl = webhookUrl.split(';').join(''); // Son kez emin olalım
+    // Webhook URL'yi string literal olarak oluşturalım
+    const safeBaseUrl = "https://strivex-websocket-production.up.railway.app";
+    const safeWebhookPath = "/api/relevance-webhook";
+    const safeWebhookUrl = safeBaseUrl + safeWebhookPath;
     
-    // Tamamen manual olarak JSON oluşturalım, hiçbir escape karakteri olmasın
-    const requestBodyJSON = `{
+    console.log('Hard-coded webhook URL:', safeWebhookUrl);
+    
+    // Tamamen manual olarak JSON oluşturalım
+    // Webhook URL'leri doğrudan string literal olarak veriyoruz, değişkenlerden gelmeyecek
+    let requestBodyJSON = `{
       "message": {
         "role": "user",
         "content": ${JSON.stringify(message)}
       },
       "agent_id": "${agentId}",
       "webhook": {
-        "url": "${cleanWebhookUrl}",
+        "url": "https://strivex-websocket-production.up.railway.app/api/relevance-webhook",
         "include_thread_id": true
       },
-      "webhook_url": "${cleanWebhookUrl}",
-      "callback_url": "${cleanWebhookUrl}",
-      "callbackUrl": "${cleanWebhookUrl}",
+      "webhook_url": "https://strivex-websocket-production.up.railway.app/api/relevance-webhook",
+      "callback_url": "https://strivex-websocket-production.up.railway.app/api/relevance-webhook",
+      "callbackUrl": "https://strivex-websocket-production.up.railway.app/api/relevance-webhook",
       "callback": {
-        "url": "${cleanWebhookUrl}"
+        "url": "https://strivex-websocket-production.up.railway.app/api/relevance-webhook"
       }${threadId ? `,
       "thread_id": "${threadId}"` : ''}
     }`;
     
+    // Son kontrol: JSON içindeki tüm noktalı virgülleri kaldır
+    requestBodyJSON = requestBodyJSON.split(';').join('');
+    
     // String olarak JSON içeriğini kontrol edelim
     console.log('Manual JSON request body (ilk 200 karakter):', requestBodyJSON.substring(0, 200) + '...');
     
-    // API isteğini doğru endpoint'e gönder - manuel JSON stringi kullan
+    // Son kontrol olarak JSON stringini log çıktısında görelim
+    console.log('Final sanitized JSON (first 200 chars):', requestBodyJSON.substring(0, 200).replace(/;/g, '--SEMICOLON--'));
+    
+    // API isteğini doğru endpoint'e gönder - tamamen temizlenmiş JSON stringi kullan
     const response = await fetch(triggerUrl, {
       method: 'POST',
       headers: {
