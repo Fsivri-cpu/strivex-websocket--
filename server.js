@@ -409,6 +409,27 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
+// Graceful shutdown handler
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received - Shutting down gracefully');
+  
+  // Close HTTP server
+  server.close(() => {
+    console.log('HTTP server closed');
+  });
+  
+  // Close Socket.IO connections
+  io.close(() => {
+    console.log('Socket.IO server closed');
+  });
+  
+  // Exit after 5 seconds if not already closed
+  setTimeout(() => {
+    console.log('Forcing exit after timeout');
+    process.exit(0);
+  }, 5000);
+});
+
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
