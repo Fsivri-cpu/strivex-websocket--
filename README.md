@@ -1,19 +1,21 @@
-# Relevance AI WebSocket + Webhook Backend
+# Relevance AI WebSocket + FastAPI (Streaming/Polling) Backend
 
-A real-time WebSocket backend with Webhook support for integrating with Relevance AI, built with Node.js, Express, and Socket.IO.
+A real-time WebSocket backend for integrating with Relevance AI, built with Node.js, Express, Socket.IO, and FastAPI. Supports both streaming responses (word-by-word) with automatic fallback to polling when streaming is disabled.
 
 ## Features
 
 - Express web server with WebSocket support via Socket.IO
-- Real-time communication with Relevance AI via Webhook callbacks
-- Secure environment variable configuration
+- Python FastAPI microservice for interacting with Relevance AI
+- Real-time streaming responses (when enabled in Relevance AI)
+- Automatic fallback to polling when streaming is not available
+- Simple architecture with minimal dependencies
 - CORS support for frontend integration
 - Error handling and logging
-- Test page for WebSocket and API integration
 
 ## Prerequisites
 
-- Node.js (v14 or higher)
+- Node.js (v18 or higher)
+- Python 3.8+ with pip
 - npm or yarn
 - Relevance AI API key
 
@@ -21,32 +23,49 @@ A real-time WebSocket backend with Webhook support for integrating with Relevanc
 
 1. Clone this repository or download the code
 2. Navigate to the project directory
-3. Install dependencies:
+3. Install Node.js dependencies:
 
 ```bash
 npm install
 ```
 
-4. Create a `.env` file based on the provided `.env.example`:
+4. Install Python dependencies:
 
 ```bash
-cp .env.example .env
+pip install -r requirements.txt
 ```
 
-5. Edit the `.env` file and add your Relevance AI API key
+5. Create a `.env` file with your Relevance AI credentials:
+
+```bash
+# Node.js service
+PY_CHAT_URL=http://localhost:8000
+
+# Python service
+RELEVANCEAI_API_KEY=your_api_key
+RELEVANCEAI_PROJECT=your_project_id
+RELEVANCEAI_REGION=d7b62b  # or your region
+AGENT_ID=your_agent_id
+```
 
 ## Usage
 
-### Starting the server
+### Starting the services
+
+1. Start the Python FastAPI service:
+
+```bash
+uvicorn chat_service:app --host 0.0.0.0 --port 8000
+```
+
+2. Start the Node.js WebSocket server:
 
 Development mode with auto-restart:
-
 ```bash
 npm run dev
 ```
 
 Production mode:
-
 ```bash
 npm start
 ```
@@ -61,14 +80,21 @@ http://localhost:3000
 
 You should see the message: "Relevance AI WebSocket Server is running."
 
-## WebSocket + Webhook Integration
+## How It Works
 
-This project uses a combination of WebSocket and Webhook technologies:
+This project uses a multi-service architecture:
 
-1. **WebSocket**: Used for real-time communication between the frontend client and the backend server
-2. **Webhook**: Used for receiving asynchronous responses from Relevance AI
+1. **Node.js Socket.IO Server**: Handles real-time WebSocket connections with the frontend client
+2. **Python FastAPI Service**: Interfaces with Relevance AI and handles streaming/polling logic
 
-To use it in your frontend project:
+Data flow:
+- Frontend sends message → Socket.IO server
+- Socket.IO server forwards message → FastAPI service
+- FastAPI service attempts streaming from Relevance AI
+- If streaming is enabled: real-time word-by-word responses flow back to the client
+- If streaming is disabled: automatically falls back to polling with a complete response
+
+### Frontend Integration
 
 1. Install Socket.IO client:
 
@@ -82,23 +108,54 @@ Or include via CDN:
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 ```
 
-2. Connect to the WebSocket server and handle events like in the test.html example:
+2. Connect to the WebSocket server:
 
 ```javascript
 const socket = io('http://your-server-url:3000');
 
 // Send a message
-socket.emit('send_message', { message: 'Hello AI!', messageId: 'msg123' });
+socket.emit('message', { 
+  message: 'Hello AI!',
+  agentId: 'your-agent-id' // Optional if set as env var
+});
 
 // Listen for responses
 socket.on('reply', (data) => {
-  console.log('Response:', data.response);
+  console.log('Response chunk:', data.response);
+  // Append to UI for streaming effect
+});
+
+// Handle errors
+socket.on('error', (data) => {
+  console.error('Error:', data.message);
 });
 ```
 
 ## Deployment to Railway.app
 
-Railway.app makes deployment simple:
+This application requires deploying two services on Railway:
+
+### 1. Python FastAPI Service
+
+1. Create a new service from GitHub repository
+2. Set the following environment variables:
+   - `RELEVANCEAI_API_KEY`
+   - `RELEVANCEAI_PROJECT`
+   - `RELEVANCEAI_REGION`
+   - `AGENT_ID` (optional, can be provided per-request)
+3. Override the start command:
+   ```
+   python -m uvicorn chat_service:app --host 0.0.0.0 --port $PORT
+   ```
+
+### 2. Node.js WebSocket Service
+
+1. Create a new service from the same GitHub repository
+2. Set the environment variable:
+   - `PY_CHAT_URL` (URL of your deployed Python service)
+3. Railway will automatically use the start command from package.json
+
+Once both services are running, your frontend can connect to the Node.js WebSocket service.
 
 1. Create an account on [Railway.app](https://railway.app)
 2. Install the Railway CLI:
