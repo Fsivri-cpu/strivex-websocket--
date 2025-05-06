@@ -199,39 +199,47 @@ async function sendMessageToRelevanceAI(message, agentId, threadId = null, socke
       throw new Error('SERVER_URL environment variable is required for webhook callbacks');
     }
     
-    // URL'yi oluştururken noktalı virgül gibi karakterlerin olmadığından emin olalım
-    // Daha kapsamlı temizleme işlemi yapalım
-    const cleanServerUrl = serverUrl.trim()
-      .replace(/;/g, '') // Noktalı virgülleri temizle
-      .replace(/\"/g, '') // Çift tırnakları temizle
-      .replace(/\s+/g, ''); // Tüm whitespace karakterleri temizle
+    // URL'yi tamamen temizle, hiçbir şekilde semicolon kalmamalı
+    let cleanServerUrl = serverUrl.trim();
+    
+    // Tüm noktalı virgülleri kaldıralım
+    cleanServerUrl = cleanServerUrl.split(';').join('');
+    
+    // Whitespace ve tırnak işaretlerini kaldır
+    cleanServerUrl = cleanServerUrl.replace(/\s+/g, '').replace(/["']/g, '');
     
     // Slash ile bitiyorsa, fazladan slash eklenmesini önleyelim
     const baseUrl = cleanServerUrl.endsWith('/') ? cleanServerUrl.slice(0, -1) : cleanServerUrl;
     
-    // Temiz URL'yi oluşturalım
-    const webhookUrl = `${baseUrl}/api/relevance-webhook`;
+    // Temiz URL'yi tamamen yeniden oluşturalım
+    const webhookUrl = baseUrl + '/api/relevance-webhook';
     console.log('Using webhook callback URL:', webhookUrl);
 
-    // Build the request body with webhook information
+    // Yeni bir request objesi oluşturalım
     const requestBody = {
       message: {
         role: "user",
         content: message
       },
-      agent_id: agentId,
-      // Tüm olası webhook formatlarını temiz URL ile deneyelim
-      webhook: {
-        url: webhookUrl,
-        include_thread_id: true
-      },
-      webhook_url: webhookUrl,
-      callback_url: webhookUrl,
-      callbackUrl: webhookUrl,
-      callback: {
-        url: webhookUrl
-      }
+      agent_id: agentId
     };
+    
+    // Webhook bilgilerini kesinlikle temiz bir şekilde ekleyelim
+    requestBody.webhook = {
+      url: webhookUrl,
+      include_thread_id: true
+    };
+    
+    // İhtiyaç olabilecek diğer callback formatları
+    requestBody.webhook_url = webhookUrl;
+    requestBody.callback_url = webhookUrl;
+    requestBody.callbackUrl = webhookUrl;
+    requestBody.callback = {
+      url: webhookUrl
+    };
+    
+    // Kontrol amaçlı webhook URL'yi bir daha yazdıralım
+    console.log('Final webhook URL (sanitized):', webhookUrl);
 
     // Add thread_id for conversation tracking if provided
     if (threadId) {
