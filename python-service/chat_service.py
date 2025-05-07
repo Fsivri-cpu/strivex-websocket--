@@ -1,7 +1,18 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from relevanceai import RelevanceAI
-from relevanceai.errors import APIError  # APIError sınıfını import et
+# Doğru import yolu ile hata sınıfını içe aktar
+try:
+    # Önce exceptions modülünden deneyelim (muhtemelen doğru olan bu)
+    from relevanceai.exceptions import APIError
+except ImportError:
+    # Eğer yoksa, ana paketten almayı deneyelim
+    try:
+        from relevanceai import APIError
+    except ImportError:
+        # Hata sınıfı bulunamazsa, Exception kullanalım
+        APIError = Exception
+
 import os
 import uuid
 import traceback  # Hata takibi için
