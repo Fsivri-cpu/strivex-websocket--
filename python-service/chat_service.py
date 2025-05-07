@@ -1,3 +1,10 @@
+# tkinter'ı mock eden bir modül oluşturalım
+class MockTkinter:
+    class Label:
+        pass
+    # Diğer gerekli tkinter sınıflarını buraya ekleyebiliriz
+
+# Şimdi standart importları yapalım
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 import os
@@ -5,8 +12,8 @@ import uuid
 import traceback  # Hata takibi için
 import sys
 
-# tkinter importunu engellemek için sys.modules'u yama
-sys.modules['tkinter'] = None
+# tkinter modülünü monkey-patch yapalım
+sys.modules['tkinter'] = MockTkinter()
 
 # Şimdi RelevanceAI'yı import et
 from relevanceai import RelevanceAI
