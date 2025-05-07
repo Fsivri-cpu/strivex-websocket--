@@ -1,8 +1,10 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from relevanceai import RelevanceAI
+from relevanceai.errors import APIError  # APIError sınıfını import et
 import os
 import uuid
+import traceback  # Hata takibi için
 
 """
 FastAPI micro-service that provides a single /chat endpoint.
@@ -38,77 +40,114 @@ async def chat(req: Request):
           "stream": true                       # default true
         }
     """
-    data = await req.json()
-    agent_id: str = data.get("agent_id") or os.getenv("AGENT_ID")
-    if not agent_id:
-        return JSONResponse({"error": "agent_id must be provided through body or env AGENT_ID"}, status_code=400)
-
-    message: str = data.get("message")
-    if not message:
-        return JSONResponse({"error": "message field is required"}, status_code=400)
-
-    thread_id: str = data.get("thread_id") or f"thread_{uuid.uuid4().hex}"
-    stream: bool = bool(data.get("stream", True))
-
-    # Attempt streaming first
-    if stream:
-        try:
-            def gen():
-                try:
-                    for part in client.agents.chat_stream(
-                        agent_id=agent_id,
-                        message=message,
-                        thread_id=thread_id,
-                    ):
-                        # Each part is assumed to be a dict with "content" key
-                        chunk = part.get("content")
-                        if chunk is not None:
-                            yield f"data:{chunk}\n\n"
-                except Exception as inner_err:
-                    # In case the generator errors out mid-stream, send error then stop
-                    yield f"data:[STREAM_ERROR] {str(inner_err)}\n\n"
-            return StreamingResponse(gen(), media_type="text/event-stream")
-        except APIError as e:
-            # Fallback only for the explicit streaming-disabled scenario
-            if "stream is not enabled" not in str(e).lower():
-                raise
-            # Otherwise, fall back to polling
-            stream = False
-        except Exception:
-            # Unknown error – force fallback
-            stream = False
-
-    # Fallback path → trigger task + polling
     try:
-        task = client.agents.trigger_task(
-            agent_id=agent_id,
-            message=message,
-            thread_id=thread_id,
-        )
-    except Exception as e:
-        return JSONResponse({"error": f"Failed to trigger task: {str(e)}"}, status_code=500)
-
-    try:
-        # Get polling timeout from environment or use default
-        timeout = int(os.getenv("POLL_TIMEOUT", 30))
-        print(f"Polling for response with timeout: {timeout}s")
+        data = await req.json()
+        print(f"[DEBUG] Received request data: {data}")
         
-        output = client.tasks.wait_for_completion(
-            task.conversation_id,
-            timeout=timeout,
-        )
+        agent_id: str = data.get("agent_id") or os.getenv("AGENT_ID")
+        if not agent_id:
+            return JSONResponse({"error": "agent_id must be provided through body or env AGENT_ID"}, status_code=400)
+
+        message: str = data.get("message")
+        if not message:
+            return JSONResponse({"error": "message field is required"}, status_code=400)
+
+        thread_id: str = data.get("thread_id") or f"thread_{uuid.uuid4().hex}"
+        stream: bool = bool(data.get("stream", True))
+        print(f"[DEBUG] Processing request - agent_id: {agent_id}, message: {message[:20]}..., stream: {stream}")
+
+        # Attempt streaming first
+        if stream:
+            try:
+                def gen():
+                    try:
+                        for part in client.agents.chat_stream(
+                            agent_id=agent_id,
+                            message=message,
+                            thread_id=thread_id,
+                        ):
+                            # Each part is assumed to be a dict with "content" key
+                            chunk = part.get("content")
+                            if chunk is not None:
+                                yield f"data:{chunk}\n\n"
+                    except Exception as inner_err:
+                        print(f"[ERROR] Stream generation error: {str(inner_err)}")
+                        traceback.print_exc()
+                        # In case the generator errors out mid-stream, send error then stop
+                        yield f"data:[STREAM_ERROR] {str(inner_err)}\n\n"
+                return StreamingResponse(gen(), media_type="text/event-stream")
+            except APIError as e:
+                print(f"[ERROR] Relevance AI streaming error: {str(e)}")
+                # Fallback only for the explicit streaming-disabled scenario
+                if "stream is not enabled" not in str(e).lower():
+                    raise
+                # Otherwise, fall back to polling
+                stream = False
+                print("[INFO] Falling back to polling mode after stream error")
+            except Exception as e:
+                # Unknown error – force fallback
+                print(f"[ERROR] Unexpected error in stream mode: {str(e)}")
+                traceback.print_exc()
+                stream = False
+
+        # Fallback path → trigger task + polling
+        try:
+            print(f"[INFO] Using polling mode with agent_id: {agent_id}, thread_id: {thread_id}")
+            task = client.agents.trigger_task(
+                agent_id=agent_id,
+                message=message,
+                thread_id=thread_id,
+            )
+            print(f"[INFO] Task triggered successfully: {task.conversation_id}")
+        except Exception as e:
+            error_msg = f"Failed to trigger task: {str(e)}"
+            print(f"[ERROR] {error_msg}")
+            traceback.print_exc()
+            return JSONResponse({"error": error_msg}, status_code=500)
+
+        try:
+            # Get polling timeout from environment or use default
+            timeout = int(os.getenv("POLL_TIMEOUT", 30))
+            print(f"[INFO] Polling for response with timeout: {timeout}s")
+            
+            output = client.tasks.wait_for_completion(
+                task.conversation_id,
+                timeout=timeout,
+            )
+            print(f"[INFO] Task completed successfully")
+        except Exception as e:
+            error_msg = f"Polling failed: {str(e)}"
+            print(f"[ERROR] {error_msg}")
+            traceback.print_exc()
+            return JSONResponse({"error": error_msg}, status_code=500)
+
+        # Make a best-effort to extract the assistant message from possible fields
+        try:
+            # Log output structure to help debug response format issues
+            print(f"[DEBUG] Output type: {type(output).__name__}")
+            print(f"[DEBUG] Output attributes: {dir(output)}")
+            
+            response_text = (
+                (getattr(output, "output", {}) or {}).get("message")
+                or getattr(output, "response", None)
+                or getattr(output, "task", {}).get("response")
+                or ""
+            )
+            
+            print(f"[INFO] Extracted response text: {response_text[:50]}...")
+            return JSONResponse({
+                "thread_id": thread_id,
+                "response": response_text,
+            })
+        except Exception as e:
+            error_msg = f"Failed to extract response: {str(e)}"
+            print(f"[ERROR] {error_msg}")
+            traceback.print_exc()
+            return JSONResponse({"error": error_msg}, status_code=500)
+            
     except Exception as e:
-        return JSONResponse({"error": f"Polling failed: {str(e)}"}, status_code=500)
-
-    # Make a best-effort to extract the assistant message from possible fields
-    response_text = (
-        (getattr(output, "output", {}) or {}).get("message")
-        or getattr(output, "response", None)
-        or getattr(output, "task", {}).get("response")
-        or ""
-    )
-
-    return JSONResponse({
-        "thread_id": thread_id,
-        "response": response_text,
-    })
+        # Catch-all exception handler for the entire function
+        error_msg = f"Unexpected error in chat endpoint: {str(e)}"
+        print(f"[ERROR] {error_msg}")
+        traceback.print_exc()
+        return JSONResponse({"error": error_msg}, status_code=500)
