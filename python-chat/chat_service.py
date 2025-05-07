@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, JSONResponse
-from relevanceai import RelevanceAI, APIError
+from relevanceai import RelevanceAI
 import os
 import uuid
 
