@@ -1,7 +1,15 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, JSONResponse
+import os
+import uuid
+import traceback  # Hata takibi için
+import sys
+
+# tkinter importunu engellemek için sys.modules'u yama
+sys.modules['tkinter'] = None
+
+# Şimdi RelevanceAI'yı import et
 from relevanceai import RelevanceAI
-# Doğru import yolu ile hata sınıfını içe aktar
 try:
     # Önce exceptions modülünden deneyelim (muhtemelen doğru olan bu)
     from relevanceai.exceptions import APIError
@@ -13,10 +21,6 @@ except ImportError:
         # Hata sınıfı bulunamazsa, Exception kullanalım
         APIError = Exception
 
-import os
-import uuid
-import traceback  # Hata takibi için
-
 """
 FastAPI micro-service that provides a single /chat endpoint.
 It first attempts to stream responses from Relevance AI via `agents.chat_stream`.
@@ -24,9 +28,10 @@ If streaming is disabled or not supported for the given agent, it falls back to
 triggering a task + polling until completion.
 
 Environment variables required:
-- RAI_AUTH_TOKEN   (project_id:api_key)
-- RAI_REGION       (e.g. d7b62b)
-- AGENT_ID         (default agent when not provided by client)
+- RELEVANCEAI_API_KEY  (your API key)
+- RELEVANCEAI_PROJECT  (your project ID)
+- RELEVANCEAI_REGION   (e.g. d7b62b)
+- AGENT_ID             (default agent when not provided by client)
 """
 
 client = RelevanceAI()  # Automatically picks up credentials from env
