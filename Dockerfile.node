@@ -1,0 +1,18 @@
+FROM node:18-slim
+
+WORKDIR /app
+
+# Önce package.json ve package-lock.json kopyala
+COPY node-service/package*.json ./
+
+# Bağımlılıkları yükle
+RUN npm ci
+
+# Uygulama kodunu kopyala
+COPY node-service/ .
+
+# Uygulama portunu dışa aç
+EXPOSE 3000
+
+# Uygulamayı başlat
+CMD ["node", "server.js"]

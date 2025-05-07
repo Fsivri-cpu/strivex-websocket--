@@ -1,0 +1,27 @@
+version: '3'
+
+services:
+  python-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - RELEVANCEAI_API_KEY=${RELEVANCEAI_API_KEY}
+      - RELEVANCEAI_PROJECT=${RELEVANCEAI_PROJECT}
+      - RELEVANCEAI_REGION=${RELEVANCEAI_REGION}
+      - AGENT_ID=${AGENT_ID}
+    restart: always
+
+  node-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    ports:
+      - "3000:3000"
+    environment:
+      - PY_CHAT_URL=http://python-service:8000
+    depends_on:
+      - python-service
+    restart: always
