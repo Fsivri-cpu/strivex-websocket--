@@ -26,24 +26,44 @@ app.get('/', (req, res) => {
 app.post('/api/test', express.json(), async (req, res) => {
   try {
     const { message, agentId } = req.body;
+    console.log(`[DEBUG] /api/test received: message="${message}", agentId=${agentId}`);
     
-    // Forward to FastAPI service
+    // Forward to FastAPI service - using stream:true like the WebSocket handler
     const apiRes = await fetch(`${process.env.PY_CHAT_URL || 'http://localhost:8000'}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, agent_id: agentId, stream: false })
+      body: JSON.stringify({ message, agent_id: agentId, stream: true })
     });
     
     if (!apiRes.ok) {
       const errText = await apiRes.text();
+      console.error(`[ERROR] /api/test forward failed with status ${apiRes.status}: ${errText}`);
       return res.status(apiRes.status).send(errText);
     }
     
-    // Return the JSON response from FastAPI
-    const data = await apiRes.json();
-    return res.json(data);
+    // For stream:true responses, we need to collect all chunks
+    if (apiRes.headers.get('content-type')?.includes('text/event-stream')) {
+      console.log(`[INFO] Received SSE stream response, processing...`);
+      let fullResponse = '';
+      
+      try {
+        for await (const chunk of apiRes.body) {
+          const text = chunk.toString().replace(/^data:/, '').trim();
+          if (text) fullResponse += text;
+        }
+        console.log(`[INFO] Successfully collected response: ${fullResponse.substring(0, 50)}...`);
+        return res.json({ response: fullResponse });
+      } catch (streamErr) {
+        console.error(`[ERROR] Error processing stream: ${streamErr}`);
+        return res.status(500).json({ error: `Stream processing error: ${streamErr.message}` });
+      }
+    } else {
+      // Fallback for JSON responses
+      const data = await apiRes.json();
+      return res.json(data);
+    }
   } catch (error) {
-    console.error('Error in /api/test proxy:', error);
+    console.error('[ERROR] Error in /api/test proxy:', error);
     return res.status(500).json({ error: error.message });
   }
 });
