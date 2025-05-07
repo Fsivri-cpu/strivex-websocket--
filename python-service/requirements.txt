@@ -1,3 +1,4 @@
-fastapi
-uvicorn
-relevanceai
+fastapi==0.95.2
+uvicorn[standard]==0.23.2
+relevanceai==2.3.1
+python-dotenv==1.0.0
