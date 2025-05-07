@@ -2,18 +2,20 @@
 // Uses FastAPI microservice for handling streaming responses
 
 import express from 'express';
-import path from 'path';
+import { Server as SocketIOServer } from 'socket.io';
 import { createServer } from 'http';
-import { Server as IOServer } from 'socket.io';
 import dotenv from 'dotenv';
 import { fetch } from 'undici';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 dotenv.config();
 
 const app = express();
-
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 // 1) public klasöründeki tüm dosyaları "/" yolu altından sun
-app.use(express.static(path.join(process.cwd(), 'public')));
+app.use(express.static(join(__dirname, 'public')));
 
 // Basic health check endpoint
 app.get('/', (req, res) => {
@@ -46,8 +48,10 @@ app.post('/api/test', express.json(), async (req, res) => {
   }
 });
 
-// Initialize Socket.IO
-const io = new SocketIOServer(server, {
+// 2) HTTP + WebSocket sunucusunu oluştur
+const httpServer = createServer(app);
+const io = new SocketIOServer(httpServer, {
+  cors: { origin: '*' },
   transports: ['websocket', 'polling']
 });
 
@@ -107,8 +111,8 @@ io.on('connection', (socket) => {
 
 // Start the server
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`WebSocket server listening on port ${PORT}`);
+httpServer.listen(PORT, () => {
+  console.log(`Server http://localhost:${PORT} üzerinde dinliyor.`);
   console.log(`Make sure FastAPI service is running at ${process.env.PY_CHAT_URL || 'http://localhost:8000'}`);
   console.log(`Test page should be available at: http://localhost:${PORT}/test.html`);
 });
