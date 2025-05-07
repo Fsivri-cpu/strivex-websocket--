@@ -1,32 +1,52 @@
-# tkinter'ı mock eden bir modül oluşturalım
+# Gerekli patching işlemlerini yapacak modülü en önce import edelim
+import sys
+import urllib.parse
+import os
+import uuid
+import traceback
+
+# urllib.parse modülündeki eksik sabit hatasını çözelim
+if not hasattr(urllib.parse, 'MAX_CACHE_SIZE'):
+    urllib.parse.MAX_CACHE_SIZE = 20
+
+# tkinter'ı mock edelim
 class MockTkinter:
     class Label:
         pass
-    # Diğer gerekli tkinter sınıflarını buraya ekleyebiliriz
+    
+    # Diğer gerekli tkinter sınıfları    
+    class Tk:
+        def __init__(self):
+            pass
+        def mainloop(self):
+            pass
+        def destroy(self):
+            pass
 
-# Şimdi standart importları yapalım
-from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, JSONResponse
-import os
-import uuid
-import traceback  # Hata takibi için
-import sys
-
-# tkinter modülünü monkey-patch yapalım
+# tkinter modülünü patching yapalım
 sys.modules['tkinter'] = MockTkinter()
 
-# Şimdi RelevanceAI'yı import et
-from relevanceai import RelevanceAI
+# Şimdi standart FastAPI importlarını yapalım
+from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse, JSONResponse
+
+# Şimdi RelevanceAI'yı import edelim
 try:
-    # Önce exceptions modülünden deneyelim (muhtemelen doğru olan bu)
-    from relevanceai.exceptions import APIError
-except ImportError:
-    # Eğer yoksa, ana paketten almayı deneyelim
+    from relevanceai import RelevanceAI
+    # exceptions modülü import etme denemeleri
     try:
-        from relevanceai import APIError
+        from relevanceai.exceptions import APIError
     except ImportError:
-        # Hata sınıfı bulunamazsa, Exception kullanalım
-        APIError = Exception
+        try:
+            from relevanceai import APIError
+        except ImportError:
+            APIError = Exception
+except Exception as e:
+    print(f"RelevanceAI import hatası: {str(e)}")
+    print("Detaylı hata bilgisi:")
+    traceback.print_exc()
+    # Hata durumunda program çalışmaya devam etsin, böylece hata loglarını görebiliriz
+    raise
 
 """
 FastAPI micro-service that provides a single /chat endpoint.
@@ -41,7 +61,14 @@ Environment variables required:
 - AGENT_ID             (default agent when not provided by client)
 """
 
-client = RelevanceAI()  # Automatically picks up credentials from env
+# Çevre değişkenlerini kontrol edelim ve loglayalım
+print(f"[ENV] RELEVANCEAI_API_KEY set: {'Yes' if os.getenv('RELEVANCEAI_API_KEY') else 'No'}")
+print(f"[ENV] RELEVANCEAI_PROJECT set: {'Yes' if os.getenv('RELEVANCEAI_PROJECT') else 'No'}")
+print(f"[ENV] RELEVANCEAI_REGION set: {'Yes' if os.getenv('RELEVANCEAI_REGION') else 'No'}")
+print(f"[ENV] AGENT_ID set: {'Yes' if os.getenv('AGENT_ID') else 'No'}")
+
+# RelevanceAI client'ı başlat
+client = RelevanceAI()
 
 app = FastAPI()
 
